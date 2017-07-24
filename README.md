@@ -3,7 +3,7 @@ Online brower implementation of [StoryFlow](http://www.ycwu.org/projects/infovis
 
 WIP
 
-# Licence
+Licence
 ---------
 
     Licensed under the Apache License, Version 2.0 (the "License");
