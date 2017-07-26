@@ -13,38 +13,53 @@ function buildInitialRelationshipTree(sessionTable, locationTree) {
 
 }
 // read in xml string and return location tree and session table
-export function readinData(xml) {
+export function data(xml) {
     const parser = new X2JS({
         attributePrefix: ""
     });
     let locationTree = {},
         sessionTable = {};
-    readXML(xml);
+    let data = parser.xml2js(xml);
+    if (data !== undefined) {
+        // this requires data with single root "All"
+        // if not, wo create a dummy root
+        let locations = data.Story.Locations;
+        if (locations !== undefined) {
+            let root = locations.Location;
+            if (Array.isArray(root)) {
+                root = {};
+                root.Location = locations.Location;
+                root.Sessions = "-1";
+                root.Name = "dummy";
+                root.Id = "-1";
+            }
+            constructLocationTree(root);
+        }
+    }
+    // characters array, add entities to SessionTable
+    let characters = data.Story.Characters.Character;
+    if (characters !== undefined) {
+        if (!Array.isArray(characters)) {
+            characters = [characters];
+        }
+        constructSessionTable(characters);
+    }
+
+    console.log(data);
+    console.log(sessionTable);
+    console.log(locationTree);
 
     return {
         locationTree: locationTree,
         sessionTable: sessionTable
     };
 
-    function readXML(xml) {
-        let data = parser.xml2js(xml);
-        constructLocationTree(data);
-        constructSessionTable(data);
-        console.log(data);
-        console.log(sessionTable);
-        console.log(locationTree);
-    }
-
-    function constructSessionTable(data) {
+    function constructSessionTable(characters) {
         let result = new Map();
-
-        // characters array, add entities to SessionTable
-        let characters = data.Story.Characters.Character;
-        for(let character of characters) {
-            // just give it a alias but not copy
+        for (let character of characters) {
+            // just give it an alias but not copy
             character.sessions = character.Span;
-            for (var j = 0; j < character.sessions.length; j++) {
-                let session = character.sessions[j];
+            for (let session of character.sessions) {
                 let sessionId = Number(session.Session);
                 let entityInfo = {
                     start: Number(session.Start),
@@ -61,16 +76,37 @@ export function readinData(xml) {
         sessionTable = result;
     }
 
-    function constructLocationTree(data) {
-
+    function constructLocationTree(root) {
+        if (root === undefined) {
+            return;
+        }
+        root.sessions = root.Sessions.split(",").map((v) => Number(v));
+        root.id = Number(root.Id);
+        root.name = root.Name;
+        root.visible = Boolean(root.Visible);
+        let children = root.Location;
+        if (children === undefined) {
+            locationTree = root;
+            return;
+        }
+        if (!Array.isArray(children)) {
+            // single child
+            root.children = [children];
+        } else {
+            root.children = children;
+        }
+        for (let child of root.children) {
+            constructLocationTree(child);
+        }
+        locationTree = root;
     }
 }
 
 function calculateCrossings(locations, location, index, sessionTable) {
     // find interset
-    for(let location of locations) {
-        for(let session of location.sessions) {
-            
+    for (let location of locations) {
+        for (let session of location.sessions) {
+
         }
     }
 }
@@ -87,7 +123,7 @@ function sortLocationChildren(locationTree, sessionTable) {
     let result = [];
     result.push(children[0]);
     children.shift();
-    for(let child of children) {
+    for (let child of children) {
         // let initial big enough
         let minCrossing = Number.MAX_SAFE_INTEGER;
         let targetIndex = 0;
@@ -128,7 +164,7 @@ function calculateTotalEntityNum(locationTree, sessionTable, forced) {
             }
         }
     }
-    for(let sessionId of locationTree.sessions) {
+    for (let sessionId of locationTree.sessions) {
         let entity = sessionTable.get(sessionId).entity;
         if (result.indexOf(entity) === -1) {
             result.push(entity);

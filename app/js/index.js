@@ -1,6 +1,6 @@
-import {readinData} from "../../src/js/story-flow"
+import {data} from "../../src/js/story-flow";
 import axios from "axios";
 
-axios.get("../test/Data/inception.xml").then((d) => {
-            readinData(d.data);
+axios.get("../test/Data/matrix.xml").then((d) => {
+            data(d.data);
         });
