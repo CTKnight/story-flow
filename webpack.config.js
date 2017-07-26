@@ -1,4 +1,4 @@
-const path = require('path'); 
+const path = require('path');
 
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const HtmlWebpackPluginConfig = new HtmlWebpackPlugin({
@@ -7,16 +7,19 @@ const HtmlWebpackPluginConfig = new HtmlWebpackPlugin({
   inject: 'body'
 })
 
-module.exports = { 
-  entry: './app/js/index.js', 
+module.exports = {
+  entry: './app/js/index.js',
   output: {
-    path: path.resolve('dist'), 
-    filename: 'index_bundle.js' 
-  }, 
+    path: path.resolve('dist'),
+    filename: 'index_bundle.js'
+  },
   module: {
-    loaders: [
-      { test: /\.js$/, loader: 'babel-loader', exclude: /node_modules/ }
-     ]
+    // disable babel for testing
+    // loaders: [{
+    //   test: /\.js$/,
+    //   loader: 'babel-loader',
+    //   exclude: /node_modules/
+    // }]
   },
   plugins: [HtmlWebpackPluginConfig]
-} 
+}

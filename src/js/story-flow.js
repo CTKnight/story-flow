@@ -3,7 +3,7 @@ import {
 } from "d3-array";
 import X2JS from "x2js";
 
-
+const NOT_EXSITS = -1;
 
 function sweepOrder(relationshipTrees) {
 
@@ -18,7 +18,7 @@ export function data(xml) {
         attributePrefix: ""
     });
     let locationTree = {},
-        sessionTable = {};
+        sessionTable = new Map();
     let data = parser.xml2js(xml);
     if (data !== undefined) {
         // this requires data with single root "All"
@@ -29,9 +29,8 @@ export function data(xml) {
             if (Array.isArray(root)) {
                 root = {};
                 root.Location = locations.Location;
-                root.Sessions = "-1";
+                root.Sessions = String(NOT_EXSITS);
                 root.Name = "dummy";
-                root.Id = "-1";
             }
             constructLocationTree(root);
         }
@@ -45,14 +44,11 @@ export function data(xml) {
         constructSessionTable(characters);
     }
 
+    sortLocationTree(locationTree, sessionTable);
+
     console.log(data);
     console.log(sessionTable);
     console.log(locationTree);
-
-    return {
-        locationTree: locationTree,
-        sessionTable: sessionTable
-    };
 
     function constructSessionTable(characters) {
         let result = new Map();
@@ -81,7 +77,7 @@ export function data(xml) {
             return;
         }
         root.sessions = root.Sessions.split(",").map((v) => Number(v));
-        root.id = Number(root.Id);
+        // use name as id
         root.name = root.Name;
         root.visible = Boolean(root.Visible);
         let children = root.Location;
@@ -152,26 +148,32 @@ function calculateTotalEntityNum(locationTree, sessionTable, forced) {
     if (Array.isArray(locationTree.entities) && !forced) {
         return locationTree.entities.length;
     }
-    let result = [];
+    let result = new Set();
     if (Array.isArray(locationTree.children)) {
         // non-leaf add their chilren's entities  
         for (let child of locationTree.children) {
             calculateTotalEntityNum(child, sessionTable, forced);
             for (let entity of child.entities) {
-                if (result.indexOf(entity) === -1) {
-                    result.push(entity);
-                }
+                result.add(entity);
             }
         }
     }
     for (let sessionId of locationTree.sessions) {
-        let entity = sessionTable.get(sessionId).entity;
-        if (result.indexOf(entity) === -1) {
-            result.push(entity);
+        if (sessionId == NOT_EXSITS) {
+            continue;
+        }
+        let entitiesInfo = sessionTable.get(sessionId);
+        if (entitiesInfo === undefined) {
+            // location tree may contain sessions where no entity is there
+            entitiesInfo = [];
+            sessionTable.set(sessionId, entitiesInfo);
+        }
+        for (let info of entitiesInfo) {
+            result.add(info.entity);
         }
     }
     locationTree.entities = result;
-    return result.length;
+    return result.size;
 }
 
 function sortLocationTree(locationTree, sessionTable) {
