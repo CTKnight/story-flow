@@ -13,6 +13,7 @@
     },
     "main": "build/js/story-flow.js",
     "module": "index",
+    "jsnext:main": "index",
     "license": "Apache-2.0",
     "repository": {
         "type": "git",
