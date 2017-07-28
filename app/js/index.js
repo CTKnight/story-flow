@@ -1,16 +1,17 @@
-import storyflow, {NOT_EXSITS} from "../../src/js/story-flow";
+import storyflow, {
+    NOT_EXSITS
+} from "../../src/js/story-flow";
 import axios from "axios";
 import X2JS from "x2js";
 
-axios.get("../test/Data/matrix.xml").then((d) => {
-    let data = readFromXML(d.data);
-    console.log(data);
-    let generator = storyflow();
-    generator(data);
-});
+// axios.get("../test/Data/matrix.xml").then((d) => {
+//     let data = readFromXML(d.data);
+//     let generator = storyflow();
+//     console.log(data);
+//     generator(data);
+// });
 axios.get("../test/Data/LetBulletFly.xml").then((d) => {
     let data = readFromXML(d.data);
-    console.log(data);
     let generator = storyflow();
     generator(data);
 });
@@ -23,9 +24,20 @@ const parser = new X2JS({
 // read in xml string and return location tree and session table
 let readFromXML = function (xml) {
     let locationTree = {},
-        sessionTable = new Map();
+        sessionTable = new Map(),
+        characterSessionInvertedIndex = [];
     let data = parser.xml2js(xml);
+    console.log(data);
     if (data !== undefined) {
+        // characters array, add entities to SessionTable
+        let characters = data.Story.Characters.Character;
+        if (characters !== undefined) {
+            if (!Array.isArray(characters)) {
+                characters = [characters];
+            }
+            sessionTable = constructSessionTable(characters);
+            characterSessionInvertedIndex = characters;
+        }
         // this requires data with single root "All"
         // if not, wo create a dummy root
         let locations = data.Story.Locations;
@@ -34,24 +46,17 @@ let readFromXML = function (xml) {
             if (Array.isArray(root)) {
                 root = {};
                 root.Location = locations.Location;
-                root.Sessions = String(NOT_EXSITS);
+                root.Sessions = "";
                 root.Name = "dummy";
             }
             locationTree = constructLocationTree(root);
         }
     }
-    // characters array, add entities to SessionTable
-    let characters = data.Story.Characters.Character;
-    if (characters !== undefined) {
-        if (!Array.isArray(characters)) {
-            characters = [characters];
-        }
-        sessionTable = constructSessionTable(characters);
-    }
 
     return {
         locationTree: locationTree,
-        sessionTable: sessionTable
+        sessionTable: sessionTable,
+        characterSessionInvertedIndex: characterSessionInvertedIndex
     };
 
     function constructSessionTable(characters) {
@@ -61,9 +66,13 @@ let readFromXML = function (xml) {
             character.sessions = character.Span;
             for (let session of character.sessions) {
                 let sessionId = Number(session.Session);
+                session.sessionId = sessionId;
+                session.start = Number(session.Start);
+                session.end = Number(session.End);
+
                 let entityInfo = {
-                    start: Number(session.Start),
-                    end: Number(session.End),
+                    start: session.start,
+                    end: session.end,
                     entity: character.Name
                 };
                 if (!result.has(sessionId)) {
@@ -81,7 +90,7 @@ let readFromXML = function (xml) {
             return;
         }
         root.sessions = root.Sessions.split(",");
-        if (root.sessions === [""]) {
+        if (root.Sessions === "") {
             root.sessions = [];
         } else {
             root.sessions = root.sessions.map((v) => Number(v));
