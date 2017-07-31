@@ -1,6 +1,4 @@
-import storyflow, {
-    NOT_EXSITS
-} from "../../src/js/story-flow";
+import storyflow from "../../src/js/story-flow";
 import axios from "axios";
 import X2JS from "x2js";
 
@@ -12,6 +10,7 @@ import X2JS from "x2js";
 // });
 axios.get("../test/Data/LetBulletFly.xml").then((d) => {
     let data = readFromXML(d.data);
+    console.log(data);
     let generator = storyflow();
     generator(data);
 });
@@ -25,9 +24,9 @@ const parser = new X2JS({
 let readFromXML = function (xml) {
     let locationTree = {},
         sessionTable = new Map(),
-        characterSessionInvertedIndex = [];
+        minTimeframe = Number.MAX_SAFE_INTEGER,
+        maxTimeframe = Number.MIN_SAFE_INTEGER;
     let data = parser.xml2js(xml);
-    console.log(data);
     if (data !== undefined) {
         // characters array, add entities to SessionTable
         let characters = data.Story.Characters.Character;
@@ -36,7 +35,6 @@ let readFromXML = function (xml) {
                 characters = [characters];
             }
             sessionTable = constructSessionTable(characters);
-            characterSessionInvertedIndex = characters;
         }
         // this requires data with single root "All"
         // if not, wo create a dummy root
@@ -56,7 +54,10 @@ let readFromXML = function (xml) {
     return {
         locationTree: locationTree,
         sessionTable: sessionTable,
-        characterSessionInvertedIndex: characterSessionInvertedIndex
+        timeSpan: {
+            maxTimeframe: maxTimeframe,
+            minTimeframe: minTimeframe
+        }
     };
 
     function constructSessionTable(characters) {
@@ -75,6 +76,12 @@ let readFromXML = function (xml) {
                     end: session.end,
                     entity: character.Name
                 };
+                if (entityInfo.start < minTimeframe) {
+                    minTimeframe = entityInfo.start;
+                }
+                if (entityInfo.end > maxTimeframe) {
+                    maxTimeframe = entityInfo.end;
+                }
                 if (!result.has(sessionId)) {
                     result.set(sessionId, [entityInfo]);
                 } else {
@@ -91,14 +98,20 @@ let readFromXML = function (xml) {
         }
         root.sessions = root.Sessions.split(",");
         if (root.Sessions === "") {
+            // otherwise "" results in [0] which is unexpected
             root.sessions = [];
         } else {
             root.sessions = root.sessions.map((v) => Number(v));
         }
+        delete root.Sessions;
         // use name as id
         root.name = root.Name;
+        delete root.Name;
         root.visible = Boolean(root.Visible);
+        delete root.Visible;
         let children = root.Location;
+        // remove Location member reference
+        delete root.Location;
         if (children === undefined) {
             locationTree = root;
             return;

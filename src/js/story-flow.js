@@ -1,5 +1,5 @@
 // for some special cases like dummy head
-export const NOT_EXSITS = -1;
+const MAX_SORT_LOOP = 20;
 
 function defaultGetLocationTree(data) {
     return data.locationTree;
@@ -17,6 +17,10 @@ function defaultGetWeight(entity) {
     return entity.weight;
 }
 
+function defaultTimeSpan(data) {
+    return data.timeSpan;
+}
+
 function hasChildren(_) {
     return !(!Array.isArray(_.children) || _.children.length === 0);
 }
@@ -24,12 +28,14 @@ function hasChildren(_) {
 export default function () {
     // settings and parameters
     let graph, data;
-
+    // data: locationTree: TreeNode
+    // sessionTable: Map<Int, EntityInfo[]>
+    // timeSpan: {maxTimeframe:Int, minTimeframe:Int}
     function storyFlow() {
         data = {
             locationTree: defaultGetLocationTree.apply(null, arguments),
             sessionTable: defaultGetSessionTable.apply(null, arguments),
-            characterSessionInvertedIndex: defaultInvertedIndex.apply(null, arguments)
+            timeSpan: defaultTimeSpan.apply(null, arguments)
         };
         update(data);
         // return graph and relationshipTree for UI
@@ -40,9 +46,10 @@ export default function () {
 
     function update(data) {
         sortLocationTree(data.locationTree);
-        let rtree = buildSingleRelationshipTree(30);
-        let order = getEntitiesOrder(rtree);
-        
+        let sequence = constructRelationshipTreeSequence();
+        console.log(sequence);
+        sortRelationTreeSequence(sequence);
+
     }
 
 
@@ -58,7 +65,7 @@ export default function () {
         for (let child of locationTree.children) {
             sortLocationTree(child);
         }
-        
+
         locationTree.children = sortLocationChildren(locationTree);
     }
 
@@ -191,7 +198,10 @@ export default function () {
             targetTree.sessions
                 .map((session) => {
                     let infoList = data.sessionTable.get(session);
-                    let ret = infoList.filter((info) => info.start <= timeframe && timeframe <= info.end);
+                    // [start, end)
+                    // because the data is  like {start: 0, end: 7}, {start: 7, end: 21}
+                    // the last timeframe may meet some trouble
+                    let ret = infoList.filter((info) => info.start <= timeframe && timeframe < info.end);
                     return {
                         key: session,
                         value: ret
@@ -220,7 +230,7 @@ export default function () {
     // weights of sessions are average of their entities 
     function getEntitiesOrder(relationshipTree) {
         let order = 0;
-        
+
         // use map to get O(1) access 
         // comparing to arrat.prorotype.indexOf() is O(n)
         let result = new Map();
@@ -235,7 +245,7 @@ export default function () {
                 }
             }
             // map still preserve input order
-            for (let [sessionId, entitiesInfoArray] of relationshipTree.sessions) {
+            for (let [_, entitiesInfoArray] of relationshipTree.sessions) {
                 for (let entitiesInfo of entitiesInfoArray) {
                     // assign to each entity
                     result.set(entitiesInfo.entity, order);
@@ -245,18 +255,54 @@ export default function () {
         }
     }
 
-    function getMaxTimeframe() {
-        return 100;
-    }
-
     function constructRelationshipTreeSequence() {
-        let locationTree = data.locationTree;
-        let maxTimeframe = getMaxTimeframe();
         let sequence = [];
-        for (let timeframe = 0; timeframe <= maxTimeframe; timeframe++) {
+        for (let timeframe = data.timeSpan.minTimeframe; timeframe <= data.timeSpan.maxTimeframe; timeframe++) {
             sequence.push(buildSingleRelationshipTree(timeframe));
         }
         return sequence;
+    }
+
+    // sort sessions and entities within each relationship tree node
+    function sortRelationTreeSequence(sequence) {
+        
+        for (let i = 0; i < MAX_SORT_LOOP; i++) {
+            let referenceTree;
+            for (let j = 0; j < sequence.length; j++) {
+                let rtree = sequence[j];
+                if (referenceTree === undefined) {
+                    referenceTree = rtree;
+                    continue;
+                }
+                sortRelationTreeByReference(referenceTree, rtree);
+            }
+        }
+    }
+
+    function sortRelationTreeByReference(referenceTree, rtree) {
+        let order = getEntitiesOrder(referenceTree);
+        sortSingleRelationTree(rtree);
+
+        function sortSingleRelationTree(target) {
+            if (target === undefined) {
+                return;
+            }
+            for(let [_, entityInfoArray] of target.sessions) {
+                // sort within a session (second level)
+                entityInfoArray.sort((a, b) => {
+                    let weightOfA = order.get(a);
+                    let weightOfB = order.get(b);
+                    // push eneities not in reference frame in back
+                    if (weightOfA === undefined) {
+                        return 1;
+                    } 
+                    if (weightOfB === undefined) {
+                        return -1;
+                    }
+                    return weightOfA - weightOfB;
+                });
+            }
+        }
     }
 
     return storyFlow;

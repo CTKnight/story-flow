@@ -23,8 +23,7 @@
         "env": {
             "browser": true
         }
-    }
-    ,
+    },
     "scripts": {
         "build": "babel src -d build",
         "start": "webpack-dev-server"
