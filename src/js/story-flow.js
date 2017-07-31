@@ -40,9 +40,9 @@ export default function () {
 
     function update(data) {
         sortLocationTree(data.locationTree);
-        console.log(data.locationTree);
         let rtree = buildSingleRelationshipTree(30);
-        console.log(rtree);
+        let order = getEntitiesOrder(rtree);
+        
     }
 
 
@@ -58,6 +58,7 @@ export default function () {
         for (let child of locationTree.children) {
             sortLocationTree(child);
         }
+        
         locationTree.children = sortLocationChildren(locationTree);
     }
 
@@ -184,7 +185,6 @@ export default function () {
             // relationship tree node structure :
             // locationNode(already sorted by location tree) || => [sessions at this time] => [entities at this time]
             // entities and sessions are filtered by timeframe
-            // entities place in post-order
             targetTree.entitiesInThisLevel = new Set(sourceTree.entitiesInThisLevel);
             targetTree.sessions = sourceTree.sessions.slice();
             let sessionToEntities = new Map();
@@ -200,10 +200,9 @@ export default function () {
                 .filter((session) =>
                     session.value.length != 0
                 )
-                .forEach((entry) => 
-                sessionToEntities.set(entry.key, entry.value));
+                .forEach((entry) =>
+                    sessionToEntities.set(entry.key, entry.value));
             targetTree.sessions = sessionToEntities;
-
 
             if (hasChildren(sourceTree)) {
                 let tempChildren = [];
@@ -215,6 +214,49 @@ export default function () {
             }
             return targetTree;
         }
+    }
+
+    // calculate entity weights and those of their sessions as reference frame
+    // weights of sessions are average of their entities 
+    function getEntitiesOrder(relationshipTree) {
+        let order = 0;
+        
+        // use map to get O(1) access 
+        // comparing to arrat.prorotype.indexOf() is O(n)
+        let result = new Map();
+        calculateWeights(relationshipTree);
+        return result;
+
+        function calculateWeights(relationshipTree) {
+            // post-order
+            if (hasChildren(relationshipTree)) {
+                for (let child of relationshipTree.children) {
+                    calculateWeights(child);
+                }
+            }
+            // map still preserve input order
+            for (let [sessionId, entitiesInfoArray] of relationshipTree.sessions) {
+                for (let entitiesInfo of entitiesInfoArray) {
+                    // assign to each entity
+                    result.set(entitiesInfo.entity, order);
+                    order += 1;
+                }
+            }
+        }
+    }
+
+    function getMaxTimeframe() {
+        return 100;
+    }
+
+    function constructRelationshipTreeSequence() {
+        let locationTree = data.locationTree;
+        let maxTimeframe = getMaxTimeframe();
+        let sequence = [];
+        for (let timeframe = 0; timeframe <= maxTimeframe; timeframe++) {
+            sequence.push(buildSingleRelationshipTree(timeframe));
+        }
+        return sequence;
     }
 
     return storyFlow;
