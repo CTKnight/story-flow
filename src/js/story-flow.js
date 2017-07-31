@@ -287,6 +287,7 @@ export default function () {
 
     function sortRelationTreeByReference(referenceTree, rtree) {
         let order = getEntitiesOrder(referenceTree);
+        console.log(order);
         sortSingleRelationTree(rtree);
 
         function sortSingleRelationTree(target) {
@@ -294,9 +295,9 @@ export default function () {
                 return;
             }
             // post-order dfs
-            if (hasChildren(referenceTree)) {
-                for (let child of referenceTree.children) {
-                    sortRelationTreeByReference(child);
+            if (hasChildren(target)) {
+                for (let child of target.children) {
+                    sortSingleRelationTree(child);
                 }
             }
             let sessionWeights = new Map();
