@@ -114,7 +114,6 @@ export default function () {
             return locationTree.entities.length;
         }
         let result = new Set();
-        let resultInLevel = new Set();
         if (hasChildren(locationTree)) {
             // non-leaf add their chilren's entities  
             for (let child of locationTree.children) {
@@ -133,11 +132,9 @@ export default function () {
             }
             for (let info of entitiesInfo) {
                 result.add(info.entity);
-                resultInLevel.add(info.entity);
             }
         }
         locationTree.entities = result;
-        locationTree.entitiesInThisLevel = resultInLevel;
         return result.size;
     }
 
@@ -192,16 +189,16 @@ export default function () {
             // relationship tree node structure :
             // locationNode(already sorted by location tree) || => [sessions at this time] => [entities at this time]
             // entities and sessions are filtered by timeframe
-            targetTree.entitiesInThisLevel = new Set(sourceTree.entitiesInThisLevel);
             targetTree.sessions = sourceTree.sessions.slice();
+            // unnecessary in relationship tree
+            delete targetTree.entities;
             let sessionToEntities = new Map();
             targetTree.sessions
                 .map((session) => {
                     let infoList = data.sessionTable.get(session);
-                    // [start, end)
+                    // [start, end) except for maxTimeframe
                     // because the data is  like {start: 0, end: 7}, {start: 7, end: 21}
-                    // the last timeframe may meet some trouble
-                    let ret = infoList.filter((info) => info.start <= timeframe && timeframe < info.end);
+                    let ret = infoList.filter((info) => (info.start <= timeframe && timeframe < info.end) || (timeframe === data.timeSpan.maxTimeframe && timeframe === info.end));
                     return {
                         key: session,
                         value: ret
@@ -257,7 +254,7 @@ export default function () {
 
     function constructRelationshipTreeSequence() {
         let sequence = [];
-        for (let timeframe = data.timeSpan.minTimeframe; timeframe <= data.timeSpan.maxTimeframe; timeframe++) {
+        for (let timeframe = data.timeSpan.minTimeframe; timeframe < data.timeSpan.maxTimeframe; timeframe++) {
             sequence.push(buildSingleRelationshipTree(timeframe));
         }
         return sequence;
@@ -265,10 +262,19 @@ export default function () {
 
     // sort sessions and entities within each relationship tree node
     function sortRelationTreeSequence(sequence) {
-        
-        for (let i = 0; i < MAX_SORT_LOOP; i++) {
+
+        for (let i = 0; i < MAX_SORT_LOOP / 2; i++) {
             let referenceTree;
             for (let j = 0; j < sequence.length; j++) {
+                let rtree = sequence[j];
+                if (referenceTree === undefined) {
+                    referenceTree = rtree;
+                    continue;
+                }
+                sortRelationTreeByReference(referenceTree, rtree);
+            }
+            referenceTree = undefined;
+            for (let j = sequence.length - 1; j >= 0; j--) {
                 let rtree = sequence[j];
                 if (referenceTree === undefined) {
                     referenceTree = rtree;
@@ -287,21 +293,53 @@ export default function () {
             if (target === undefined) {
                 return;
             }
-            for(let [_, entityInfoArray] of target.sessions) {
+            // post-order dfs
+            if (hasChildren(referenceTree)) {
+                for (let child of referenceTree.children) {
+                    sortRelationTreeByReference(child);
+                }
+            }
+            let sessionWeights = new Map();
+            for (let [sessionId, entityInfoArray] of target.sessions) {
+                let validWeight = 0;
+                let validNum = 0;
                 // sort within a session (second level)
                 entityInfoArray.sort((a, b) => {
-                    let weightOfA = order.get(a);
-                    let weightOfB = order.get(b);
+                    let weightOfA = order.get(a.entity);
+                    let weightOfB = order.get(b.entity);
                     // push eneities not in reference frame in back
+                    if (weightOfA === undefined && weightOfB === undefined) {
+                        return 0;
+                    }
                     if (weightOfA === undefined) {
                         return 1;
-                    } 
+                    }
                     if (weightOfB === undefined) {
                         return -1;
                     }
                     return weightOfA - weightOfB;
                 });
+
+                entityInfoArray.forEach((entityInfo) => {
+                    let weight = order.get(entityInfo.entity);
+                    if (weight) {
+                        validWeight += weight;
+                        validNum += 1;
+                    }
+                });
+
+                let weightOfSession = Number.MAX_SAFE_INTEGER;
+                if (validNum !== 0) {
+                    // all entities in this session is not in reference frame, push it to back
+                    weightOfSession = validWeight / validNum;
+                }
+                sessionWeights.set(sessionId, weightOfSession);
             }
+            // sort sessions
+            target.sessions = new Map([...target.sessions].sort((a, b) =>
+                // a[0] is key of entry
+                sessionWeights.get(a[0]) - sessionWeights.get(b[0])
+            ));
         }
     }
 
