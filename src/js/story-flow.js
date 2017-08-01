@@ -1,5 +1,6 @@
 // for some special cases like dummy head
 const MAX_SORT_LOOP = 20;
+const RELATIVE_FACTOR_ALPHA = 0.1;
 
 function defaultGetLocationTree(data) {
     return data.locationTree;
@@ -346,21 +347,56 @@ export default function () {
         }
     }
 
-    // dynamic programming 
     function alignSequence(sequence) {
         for (let i = 0; i + 1 < sequence.length; i++) {
             let previous = sequence[i];
             let next = sequence[i + 1];
-            let previousOrder = getSessionOrder(previous);
+
+            let previousOrder = previous.sessionOrder;
+            if (previousOrder === undefined) {
+                // intial one
+                previous.sessionOrder = getSessionOrder(previous);
+            }
             let nextOrder = getSessionOrder(next);
+            next.sessionOrder = nextOrder;
+
+            alignSingleGap(previousOrder, nextOrder);
         }
+
+        // previousOrder: [[sessionId, [EntityInfo: {entity: String, start:Int, end:Int}]]
+        // dynamic programming 
+        function alignSingleGap(previousOrder, nextOrder) {
+
+            let dynamicTable = Array(previousOrder.length).fill(Array(nextOrder.length));
+
+            function similarity(sessionA, sessionB) {
+                return straight(sessionA, sessionB) +
+                    relativeSimilarity(
+                        previousOrder.indexOf(sessionA),
+                        nextOrder.indexOf(sessionB),
+                        previousOrder.length,
+                        nextOrder.length);
+            }
+
+            function straight(sessionA, sessionB) {
+
+            }
+
+            // i,j is session index, m,n is session squence length
+            function relativeSimilarity(i, j, m, n) {
+                return RELATIVE_FACTOR_ALPHA * (1 - Math.abs(i / m - j / n));
+            }
+        }
+
+
+
     }
 
     function getSessionOrder(rtree) {
         let result = [];
         if (hasChildren(rtree)) {
             for (let child of rtree.children) {
-                for(let session of getSessionOrder(child)) {
+                for (let session of getSessionOrder(child)) {
                     result.push(session);
                 }
             }
