@@ -49,7 +49,7 @@ export default function () {
         let sequence = constructRelationshipTreeSequence();
         console.log(sequence);
         sortRelationTreeSequence(sequence);
-
+        alignSequence(sequence);
     }
 
 
@@ -269,26 +269,28 @@ export default function () {
                 let rtree = sequence[j];
                 if (referenceTree === undefined) {
                     referenceTree = rtree;
+                    // use initial as reference
+                    rtree.order = getEntitiesOrder(rtree);
                     continue;
                 }
                 sortRelationTreeByReference(referenceTree, rtree);
+                // update reference frame
+                referenceTree = rtree;
             }
-            referenceTree = undefined;
-            for (let j = sequence.length - 1; j >= 0; j--) {
+            // sweep from the last but 2 rtree
+            for (let j = sequence.length - 2; j >= 0; j--) {
                 let rtree = sequence[j];
-                if (referenceTree === undefined) {
-                    referenceTree = rtree;
-                    continue;
-                }
                 sortRelationTreeByReference(referenceTree, rtree);
+                referenceTree = rtree;
             }
         }
     }
 
     function sortRelationTreeByReference(referenceTree, rtree) {
-        let order = getEntitiesOrder(referenceTree);
-        console.log(order);
+        let order = referenceTree.order;
         sortSingleRelationTree(rtree);
+        // update order after sorting
+        rtree.order = getEntitiesOrder(rtree);
 
         function sortSingleRelationTree(target) {
             if (target === undefined) {
@@ -342,6 +344,32 @@ export default function () {
                 sessionWeights.get(a[0]) - sessionWeights.get(b[0])
             ));
         }
+    }
+
+    // dynamic programming 
+    function alignSequence(sequence) {
+        for (let i = 0; i + 1 < sequence.length; i++) {
+            let previous = sequence[i];
+            let next = sequence[i + 1];
+            let previousOrder = getSessionOrder(previous);
+            let nextOrder = getSessionOrder(next);
+        }
+    }
+
+    function getSessionOrder(rtree) {
+        let result = [];
+        if (hasChildren(rtree)) {
+            for (let child of rtree.children) {
+                for(let session of getSessionOrder(child)) {
+                    result.push(session);
+                }
+            }
+        }
+        delete rtree.order;
+        for (let entry of rtree.sessions) {
+            result.push(entry);
+        }
+        return result;
     }
 
     return storyFlow;
