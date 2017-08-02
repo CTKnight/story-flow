@@ -355,7 +355,7 @@ export default function () {
             let previousOrder = previous.sessionOrder;
             if (previousOrder === undefined) {
                 // intial one
-                previous.sessionOrder = getSessionOrder(previous);
+                previousOrder = previous.sessionOrder = getSessionOrder(previous);
             }
             let nextOrder = getSessionOrder(next);
             next.sessionOrder = nextOrder;
@@ -367,7 +367,30 @@ export default function () {
         // dynamic programming 
         function alignSingleGap(previousOrder, nextOrder) {
 
-            let dynamicTable = Array(previousOrder.length).fill(Array(nextOrder.length));
+            let m = previousOrder.length,
+                n = nextOrder.length;
+            // zero index included
+            let dynamicTable = Array(m + 1).fill(Array(n + 1));
+
+            // match(i,j) = max (match(i-1, j-1) + sim(li, rj), match(i-1, j), match(i, j-1)) : if i > 0 and j > 0
+            //            = 0 : if i = 0 or j = 0
+
+            for (let i = 0; i <= m; i++) {
+                dynamicTable[i][0] = 0;
+            }
+
+            for (let i = 0; i <= n; i++) {
+                dynamicTable[0][i] = 0;
+            }
+
+            for (let i = 1; i <= m; i++) {
+                for (let j = 1; j <= n; j++) {
+                    dynamicTable = Math.max(
+                        dynamicTable[i - 1][j - 1] + similarity(previousOrder[i], nextOrder[j]),
+                        dynamicTable[i - 1][j],
+                        dynamicTable[i][j - 1]);
+                }
+            }
 
             function similarity(sessionA, sessionB) {
                 return straight(sessionA, sessionB) +
@@ -379,7 +402,7 @@ export default function () {
             }
 
             function straight(sessionA, sessionB) {
-
+                return 0;
             }
 
             // i,j is session index, m,n is session squence length
