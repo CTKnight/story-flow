@@ -26,6 +26,10 @@ function hasChildren(_) {
     return !(!Array.isArray(_.children) || _.children.length === 0);
 }
 
+function create2DArray(row, column) {
+    return [...Array(row).keys()].map(() => Array(column));
+}
+
 export default function () {
     // settings and parameters
     let graph, data;
@@ -357,6 +361,7 @@ export default function () {
                 // intial one
                 previousOrder = previous.sessionOrder = getSessionOrder(previous);
             }
+
             let nextOrder = getSessionOrder(next);
             next.sessionOrder = nextOrder;
 
@@ -365,12 +370,13 @@ export default function () {
 
         // previousOrder: [[sessionId, [EntityInfo: {entity: String, start:Int, end:Int}]]
         // dynamic programming 
+        // the input array should use index that starts from 1
         function alignSingleGap(previousOrder, nextOrder) {
 
             let m = previousOrder.length,
                 n = nextOrder.length;
             // zero index included
-            let dynamicTable = Array(m + 1).fill(Array(n + 1));
+            let dynamicTable = create2DArray(m + 1, n + 1);
 
             // match(i,j) = max (match(i-1, j-1) + sim(li, rj), match(i-1, j), match(i, j-1)) : if i > 0 and j > 0
             //            = 0 : if i = 0 or j = 0
@@ -385,16 +391,18 @@ export default function () {
 
             for (let i = 1; i <= m; i++) {
                 for (let j = 1; j <= n; j++) {
-                    dynamicTable = Math.max(
+                    dynamicTable[i][j] = Math.max(
                         dynamicTable[i - 1][j - 1] + similarity(previousOrder[i], nextOrder[j]),
                         dynamicTable[i - 1][j],
                         dynamicTable[i][j - 1]);
                 }
             }
 
+            console.log(dynamicTable);
+
             function similarity(sessionA, sessionB) {
                 return straight(sessionA, sessionB) +
-                    relativeSimilarity(
+                    RELATIVE_FACTOR_ALPHA * relativeSimilarity(
                         previousOrder.indexOf(sessionA),
                         nextOrder.indexOf(sessionB),
                         previousOrder.length,
@@ -407,28 +415,30 @@ export default function () {
 
             // i,j is session index, m,n is session squence length
             function relativeSimilarity(i, j, m, n) {
-                return RELATIVE_FACTOR_ALPHA * (1 - Math.abs(i / m - j / n));
+                return (1 - Math.abs(i / m - j / n));
             }
         }
-
-
-
     }
 
-    function getSessionOrder(rtree) {
+    function getSessionOrder(root) {
         let result = [];
-        if (hasChildren(rtree)) {
-            for (let child of rtree.children) {
-                for (let session of getSessionOrder(child)) {
-                    result.push(session);
+        dfsGetOrder(root);
+        // the input array should use index that starts from 1 for dynammic programming
+        result.unshift(undefined);
+        return result;
+
+        function dfsGetOrder(rtree) {
+            if (hasChildren(rtree)) {
+                for (let child of rtree.children) {
+                     dfsGetOrder(child);
                 }
             }
+            delete rtree.order;
+            for (let entry of rtree.sessions) {
+                result.push(entry);
+            }
         }
-        delete rtree.order;
-        for (let entry of rtree.sessions) {
-            result.push(entry);
-        }
-        return result;
+
     }
 
     return storyFlow;
