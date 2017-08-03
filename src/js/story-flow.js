@@ -373,8 +373,10 @@ export default function () {
         // the input array should use index that starts from 1
         function alignSingleGap(previousOrder, nextOrder) {
 
-            let m = previousOrder.length,
-                n = nextOrder.length;
+            // the input array should use index that starts from 1
+            // length include the dummy undefined
+            let m = previousOrder.length - 1,
+                n = nextOrder.length - 1;
             // zero index included
             let dynamicTable = create2DArray(m + 1, n + 1);
 
@@ -401,7 +403,7 @@ export default function () {
             console.log(dynamicTable);
 
             function similarity(sessionA, sessionB) {
-                return straight(sessionA, sessionB) +
+                return longestCommonSubsquenceLength(sessionA, sessionB) +
                     RELATIVE_FACTOR_ALPHA * relativeSimilarity(
                         previousOrder.indexOf(sessionA),
                         nextOrder.indexOf(sessionB),
@@ -409,8 +411,37 @@ export default function () {
                         nextOrder.length);
             }
 
-            function straight(sessionA, sessionB) {
-                return 0;
+            function longestCommonSubsquenceLength(sessionA, sessionB) {
+                // session: [sessionId, [EntityInfo]]
+                // make its index starts from 1 for DP 
+                let reference = sessionA[1].slice();
+                reference.unshift(undefined);
+                let target = sessionB[1].slice();
+                target.unshift(undefined);
+
+                let m = sessionA[1].length;
+                let n = sessionB[1].length;
+
+                let table = create2DArray(m + 1, n + 1);
+
+                for (let i = 0; i <= m; i++) {
+                    table[i][0] = 0;
+                }
+                for (let i = 0; i <= n; i++) {
+                    table[0][i] = 0;
+                }
+
+                for (let i = 1; i <= m; i++) {
+                    for (let j = 1; j <= n; j++) {
+                        if (reference[i].entity == target[j].entity) {
+                            table[i][j] = table[i - 1][j - 1] + 1;
+                        } else {
+                            table[i][j] = Math.max(table[i-1][j], table[i][j-1]);
+                        }
+                    }
+                }
+
+                return table[m][n];
             }
 
             // i,j is session index, m,n is session squence length
@@ -423,14 +454,14 @@ export default function () {
     function getSessionOrder(root) {
         let result = [];
         dfsGetOrder(root);
-        // the input array should use index that starts from 1 for dynammic programming
+        // the output array should use index that starts from 1 for dynammic programming
         result.unshift(undefined);
         return result;
 
         function dfsGetOrder(rtree) {
             if (hasChildren(rtree)) {
                 for (let child of rtree.children) {
-                     dfsGetOrder(child);
+                    dfsGetOrder(child);
                 }
             }
             delete rtree.order;
