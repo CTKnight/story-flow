@@ -1,9 +1,3 @@
-// for some special cases like dummy head
-const MAX_SORT_LOOP = 20;
-const RELATIVE_FACTOR_ALPHA = 0.1;
-// record the best path direction
-const LEFT = "LEFT", LEFT_UP = "LEFT_UP", UP = "UP";
-
 function defaultGetLocationTree(data) {
     return data.locationTree;
 }
@@ -33,6 +27,14 @@ function create2DArray(row, column) {
 }
 
 export default function () {
+    // for some special cases like dummy head
+    const MAX_SORT_LOOP = 20;
+    const RELATIVE_FACTOR_ALPHA = 0.1;
+    // record the best path direction
+    const LEFT = "LEFT",
+        LEFT_UP = "LEFT_UP",
+        UP = "UP";
+
     // settings and parameters
     let graph, data;
     // data: locationTree: TreeNode
@@ -396,18 +398,22 @@ export default function () {
 
             for (let i = 1; i <= m; i++) {
                 for (let j = 1; j <= n; j++) {
-                    let left = dynamicTable[i - 1][j], leftUp = dynamicTable[i - 1][j - 1] + similarity(previousOrder[i], nextOrder[j]), up = dynamicTable[i][j - 1], max = Math.max(left, leftUp, up), pathDirection;
+                    let left = dynamicTable[i - 1][j],
+                        leftUp = dynamicTable[i - 1][j - 1] + similarity(previousOrder[i], nextOrder[j]),
+                        up = dynamicTable[i][j - 1],
+                        max = Math.max(left, leftUp, up),
+                        pathDirection;
                     dynamicTable[i][j] = max;
 
                     switch (max) {
                         case left:
-                            pathDirection = LEFT; 
+                            pathDirection = LEFT;
                             break;
                         case leftUp:
-                            pathDirection = LEFT_UP; 
+                            pathDirection = LEFT_UP;
                             break;
                         case up:
-                            pathDirection = UP; 
+                            pathDirection = UP;
                             break;
                         default:
                             break;
@@ -416,6 +422,11 @@ export default function () {
                     pathTable[i][j] = pathDirection;
                 }
             }
+
+            let alignedSessionPairs = getAlignedSessionPairs(pathTable);
+
+            console.log(pathTable);
+            console.log(alignedSessionPairs);
 
             function similarity(sessionA, sessionB) {
                 return longestCommonSubsquenceLength(sessionA, sessionB) +
@@ -451,7 +462,7 @@ export default function () {
                         if (reference[i].entity == target[j].entity) {
                             table[i][j] = table[i - 1][j - 1] + 1;
                         } else {
-                            table[i][j] = Math.max(table[i-1][j], table[i][j-1]);
+                            table[i][j] = Math.max(table[i - 1][j], table[i][j - 1]);
                         }
                     }
                 }
@@ -462,6 +473,37 @@ export default function () {
             // i,j is session index, m,n is session squence length
             function relativeSimilarity(i, j, m, n) {
                 return (1 - Math.abs(i / m - j / n));
+            }
+
+            function getAlignedSessionPairs(pathTable) {
+                let result = [];
+
+                let m = pathTable.length - 1;
+                let n = pathTable[m].length - 1;
+
+                for (let target = pathTable[m][n]; target !== undefined; target = pathTable[m][n]) {
+                    if (m === 0 || n === 0) {
+                        break;
+                    }
+
+                    switch (target) {
+                        case LEFT_UP:
+                            result.push([m, n]);
+                            m -= 1;
+                            n -= 1;
+                            break;
+                        case LEFT:
+                            m -= 1;
+                            break;
+                        case UP:
+                            n -= 1;
+                            break;
+                        default:
+                            break;
+                    }
+                }
+
+                return result;
             }
         }
     }
