@@ -377,6 +377,10 @@ export default function () {
         // the input array should use index that starts from 1
         function alignSingleGap(previousOrder, nextOrder) {
 
+            if (isIdenticalOrder(previousOrder, nextOrder)) {
+                return;
+            }
+
             // the input array should use index that starts from 1
             // length include the dummy undefined
             let m = previousOrder.length - 1,
@@ -427,6 +431,27 @@ export default function () {
 
             console.log(pathTable);
             console.log(alignedSessionPairs);
+
+            function isIdenticalOrder(previousOrder, nextOrder) {
+                if (previousOrder.length !== nextOrder.length) {
+                    return false;
+                }
+                for (let i = 1; i < previousOrder.length; i++) {
+                    let previousEntitiesInfoArray = previousOrder[i];
+                    let nextEntitiesInfoArray = nextOrder[i];
+                    if (previousEntitiesInfoArray.length !== nextEntitiesInfoArray.length) {
+                        return false;
+                    }
+                    for (let j = 0; j < previousEntitiesInfoArray.length; j++) {
+                        let entityInfo = previousEntitiesInfoArray[j];
+                        let nextEntityInfo = nextEntitiesInfoArray[j];
+                        if (entityInfo.entity !== nextEntityInfo.entity) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
 
             function similarity(sessionA, sessionB) {
                 return longestCommonSubsquenceLength(sessionA, sessionB) +
