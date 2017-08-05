@@ -1,6 +1,8 @@
 // for some special cases like dummy head
 const MAX_SORT_LOOP = 20;
 const RELATIVE_FACTOR_ALPHA = 0.1;
+// record the best path direction
+const LEFT = "LEFT", LEFT_UP = "LEFT_UP", UP = "UP";
 
 function defaultGetLocationTree(data) {
     return data.locationTree;
@@ -379,6 +381,7 @@ export default function () {
                 n = nextOrder.length - 1;
             // zero index included
             let dynamicTable = create2DArray(m + 1, n + 1);
+            let pathTable = create2DArray(m + 1, n + 1);
 
             // match(i,j) = max (match(i-1, j-1) + sim(li, rj), match(i-1, j), match(i, j-1)) : if i > 0 and j > 0
             //            = 0 : if i = 0 or j = 0
@@ -393,14 +396,26 @@ export default function () {
 
             for (let i = 1; i <= m; i++) {
                 for (let j = 1; j <= n; j++) {
-                    dynamicTable[i][j] = Math.max(
-                        dynamicTable[i - 1][j - 1] + similarity(previousOrder[i], nextOrder[j]),
-                        dynamicTable[i - 1][j],
-                        dynamicTable[i][j - 1]);
+                    let left = dynamicTable[i - 1][j], leftUp = dynamicTable[i - 1][j - 1] + similarity(previousOrder[i], nextOrder[j]), up = dynamicTable[i][j - 1], max = Math.max(left, leftUp, up), pathDirection;
+                    dynamicTable[i][j] = max;
+
+                    switch (max) {
+                        case left:
+                            pathDirection = LEFT; 
+                            break;
+                        case leftUp:
+                            pathDirection = LEFT_UP; 
+                            break;
+                        case up:
+                            pathDirection = UP; 
+                            break;
+                        default:
+                            break;
+                    }
+
+                    pathTable[i][j] = pathDirection;
                 }
             }
-
-            console.log(dynamicTable);
 
             function similarity(sessionA, sessionB) {
                 return longestCommonSubsquenceLength(sessionA, sessionB) +
