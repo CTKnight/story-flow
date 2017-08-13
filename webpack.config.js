@@ -21,5 +21,11 @@ module.exports = {
     //   exclude: /node_modules/
     // }]
   },
-  plugins: [HtmlWebpackPluginConfig]
-}
+  plugins: [HtmlWebpackPluginConfig],
+  resolve: { 
+    // temp fix for using d3 and d3-selection-multi together
+    alias: {
+      'd3': 'd3/index.js'
+    }
+   }
+};

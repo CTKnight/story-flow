@@ -25,6 +25,23 @@ function hasChildren(_) {
 function create2DArray(row, column) {
     return [...Array(row).keys()].map(() => Array(column));
 }
+// children function should return [node]? 
+// post-order dfs util function
+function postOrderDfsVisit(node, visitFunction, childrenFunction) {
+    if (!node) {
+        return;
+    }
+
+    let children = childrenFunction(node);
+
+    if (Array.isArray(children)) {
+        for (let child of children) {
+            postOrderDfsVisit(child, visitFunction, childrenFunction);
+        }
+    }
+
+    visitFunction(node);
+}
 
 export default function () {
     // for some special cases like dummy head
@@ -37,6 +54,12 @@ export default function () {
 
     // settings and parameters
     let graph, data;
+
+    // extent
+    let x0 = 0,
+        y0 = 0,
+        x1 = 1,
+        y1 = 1;
     // data: locationTree: TreeNode
     // sessionTable: Map<Int, EntityInfo[]>
     // timeSpan: {maxTimeframe:Int, minTimeframe:Int}
@@ -46,17 +69,24 @@ export default function () {
             sessionTable: defaultGetSessionTable.apply(null, arguments),
             timeSpan: defaultTimeSpan.apply(null, arguments)
         };
-        update(data);
+        layout(data);
         // return graph and relationshipTree for UI
         return graph;
     }
 
-    storyFlow.update = update;
+    storyFlow.layout = layout;
 
-    function update(data) {
+    // the x, y axis range
+    storyFlow.extent = function (_) {
+        return arguments.length ? (x0 = +_[0][0], x1 = +_[1][0], y0 = +_[0][1], y1 = +_[1][1], sankey) : [
+            [x0, y0],
+            [x1, y1]
+        ];
+    };
+
+    function layout(data) {
         sortLocationTree(data.locationTree);
         let sequence = constructRelationshipTreeSequence();
-        console.log(sequence);
         sortRelationTreeSequence(sequence);
         alignSequence(sequence);
     }
@@ -428,9 +458,6 @@ export default function () {
             }
 
             let alignedSessionPairs = getAlignedSessionPairs(pathTable);
-
-            console.log(pathTable);
-            console.log(alignedSessionPairs);
 
             function isIdenticalOrder(previousOrder, nextOrder) {
                 if (previousOrder.length !== nextOrder.length) {
