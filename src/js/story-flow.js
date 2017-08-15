@@ -89,6 +89,7 @@ export default function () {
         let sequence = constructRelationshipTreeSequence();
         sortRelationTreeSequence(sequence);
         alignSequence(sequence);
+        console.log(sequence);
     }
 
 
@@ -149,7 +150,7 @@ export default function () {
     function calculateTotalEntityNum(locationTree, forced) {
         let sessionTable = data.sessionTable;
         // already calculated and not forced to update
-        if (locationTree.entities !== undefined && !forced) {
+        if (locationTree.entities && !forced) {
             return locationTree.entities.length;
         }
         let result = new Set();
@@ -533,7 +534,7 @@ export default function () {
                 let m = pathTable.length - 1;
                 let n = pathTable[m].length - 1;
 
-                for (let target = pathTable[m][n]; target !== undefined; target = pathTable[m][n]) {
+                for (let target = pathTable[m][n]; target; target = pathTable[m][n]) {
                     if (m === 0 || n === 0) {
                         break;
                     }

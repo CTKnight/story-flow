@@ -1,24 +1,17 @@
 import storyflow from "../../src/js/story-flow";
-import axios from "axios";
-import X2JS from "x2js";
+import storyflowlinkHorizontal from "../../src/js/linkHorizontal";
+import * as d3 from "d3";
+import "d3-selection-multi";
 
-// axios.get("../test/Data/matrix.xml").then((d) => {
-//     let data = readFromXML(d.data);
-//     let generator = storyflow();
-//     console.log(data);
-//     generator(data);
-// });
-axios.get("../test/Data/LetBulletFly.xml").then((d) => {
-    let data = readFromXML(d.data);
-    console.log(data);
+d3.xml("../test/Data/LetBulletFly.xml", (error, data) => {
+    if (error) {
+        throw error;
+    }
+
+    data = readFromXML(data);
     let generator = storyflow();
     generator(data);
 });
-
-const parser = new X2JS({
-    attributePrefix: ""
-});
-
 
 // read in xml string and return location tree and session table
 let readFromXML = function (xml) {
@@ -26,26 +19,32 @@ let readFromXML = function (xml) {
         sessionTable = new Map(),
         minTimeframe = Number.MAX_SAFE_INTEGER,
         maxTimeframe = Number.MIN_SAFE_INTEGER;
-    let data = parser.xml2js(xml);
-    if (data !== undefined) {
+    let story = xml.querySelector("Story");
+    if (story) {
         // characters array, add entities to SessionTable
-        let characters = data.Story.Characters.Character;
-        if (characters !== undefined) {
-            if (!Array.isArray(characters)) {
-                characters = [characters];
-            }
+        let characters = story.querySelector("Characters");
+        if (characters) {
             sessionTable = constructSessionTable(characters);
         }
         // this requires data with single root "All"
         // if not, wo create a dummy root
-        let locations = data.Story.Locations;
-        if (locations !== undefined) {
-            let root = locations.Location;
-            if (Array.isArray(root)) {
-                root = {};
-                root.Location = locations.Location;
-                root.Sessions = "";
-                root.Name = "dummy";
+
+        // select direct children
+        // https://developer.mozilla.org/en-US/docs/Web/CSS/:scope
+        let locations = story.querySelector("Locations");
+        if (locations) {
+            let root = Array.from(locations.children);
+            console.log(root);
+            if (root.length !== 1) {
+                let tmp = document.createElement("Location");
+                tmp.setAttribute("Sessions", "");
+                tmp.setAttribute("Name", "dummy");
+                for(let element of root) {
+                    tmp.appendChild(element);
+                }
+                root = tmp;
+            } else {
+                root = root[0];
             }
             locationTree = constructLocationTree(root);
         }
@@ -62,19 +61,20 @@ let readFromXML = function (xml) {
 
     function constructSessionTable(characters) {
         let result = new Map();
+        characters = characters.querySelectorAll("Character");
         for (let character of characters) {
             // just give it an alias but not copy
-            character.sessions = character.Span;
+            character.sessions = character.querySelectorAll("Span");
             for (let session of character.sessions) {
-                let sessionId = Number(session.Session);
+                let sessionId = Number(session.getAttribute("Session"));
                 session.sessionId = sessionId;
-                session.start = Number(session.Start);
-                session.end = Number(session.End);
+                session.start = Number(session.getAttribute("Start"));
+                session.end = Number(session.getAttribute("End"));
 
                 let entityInfo = {
                     start: session.start,
                     end: session.end,
-                    entity: character.Name
+                    entity: character.getAttribute("Name")
                 };
                 if (entityInfo.start < minTimeframe) {
                     minTimeframe = entityInfo.start;
@@ -92,38 +92,27 @@ let readFromXML = function (xml) {
         return result;
     }
 
-    function constructLocationTree(root) {
-        if (root === undefined) {
+    // construct a copy a tree
+    function constructLocationTree(dom) {
+        let root = {};
+        if (dom === undefined) {
             return;
         }
-        root.sessions = root.Sessions.split(",");
-        if (root.Sessions === "") {
+        let sessions = dom.getAttribute("Sessions");
+        root.sessions = sessions.split(",");
+        if (sessions === "") {
             // otherwise "" results in [0] which is unexpected
             root.sessions = [];
         } else {
             root.sessions = root.sessions.map((v) => Number(v));
         }
-        delete root.Sessions;
         // use name as id
-        root.name = root.Name;
-        delete root.Name;
-        root.visible = Boolean(root.Visible);
-        delete root.Visible;
-        let children = root.Location;
-        // remove Location member reference
-        delete root.Location;
-        if (children === undefined) {
-            locationTree = root;
-            return;
-        }
-        if (!Array.isArray(children)) {
-            // single child
-            root.children = [children];
-        } else {
-            root.children = children;
-        }
-        for (let child of root.children) {
-            constructLocationTree(child);
+        root.name = dom.getAttribute("Name");
+        root.visible = Boolean(dom.getAttribute("Visible"));
+
+        root.children = [];
+        for (let child of dom.children) {
+            root.children.push(constructLocationTree(child));
         }
         return root;
     }
