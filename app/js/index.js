@@ -1,20 +1,27 @@
 import storyflow from "../../src/js/story-flow";
-import storyflowlinkHorizontal from "../../src/js/linkHorizontal";
 import * as d3 from "d3";
-import "d3-selection-multi";
+
+import {
+    draw
+} from "./draw";
 
 d3.xml("../test/Data/LetBulletFly.xml", (error, data) => {
     if (error) {
         throw error;
     }
-
-    data = readFromXML(data);
     let generator = storyflow();
+    console.time("read");
+    data = readFromXML(data);
+    console.timeEnd("read");
+
+    console.time("layout");
     generator(data);
+    console.timeEnd("layout");
+    // draw();
 });
 
 // read in xml string and return location tree and session table
-let readFromXML = function (xml) {
+function readFromXML(xml) {
     let locationTree = {},
         sessionTable = new Map(),
         minTimeframe = Number.MAX_SAFE_INTEGER,
@@ -34,12 +41,11 @@ let readFromXML = function (xml) {
         let locations = story.querySelector("Locations");
         if (locations) {
             let root = Array.from(locations.children);
-            console.log(root);
             if (root.length !== 1) {
                 let tmp = document.createElement("Location");
                 tmp.setAttribute("Sessions", "");
                 tmp.setAttribute("Name", "dummy");
-                for(let element of root) {
+                for (let element of root) {
                     tmp.appendChild(element);
                 }
                 root = tmp;
@@ -116,4 +122,4 @@ let readFromXML = function (xml) {
         }
         return root;
     }
-};
+}

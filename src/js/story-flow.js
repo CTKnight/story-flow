@@ -1,3 +1,5 @@
+import {solveQP} from "quadprog";
+
 function defaultGetLocationTree(data) {
     return data.locationTree;
 }
@@ -47,6 +49,8 @@ export default function () {
     // for some special cases like dummy head
     const MAX_SORT_LOOP = 20;
     const RELATIVE_FACTOR_ALPHA = 0.1;
+    const SAME_SESSION_FACTOR = 3;
+    const DIFFERENT_SESSION_FACTOR = 9;
     // record the best path direction
     const LEFT = "LEFT",
         LEFT_UP = "LEFT_UP",
@@ -59,7 +63,8 @@ export default function () {
     let x0 = 0,
         y0 = 0,
         x1 = 1,
-        y1 = 1;
+        y1 = 1,
+        lineWidth = 3;
     // data: locationTree: TreeNode
     // sessionTable: Map<Int, EntityInfo[]>
     // timeSpan: {maxTimeframe:Int, minTimeframe:Int}
@@ -78,18 +83,23 @@ export default function () {
 
     // the x, y axis range
     storyFlow.extent = function (_) {
-        return arguments.length ? (x0 = +_[0][0], x1 = +_[1][0], y0 = +_[0][1], y1 = +_[1][1], sankey) : [
+        return arguments.length ? (x0 = +_[0][0], x1 = +_[1][0], y0 = +_[0][1], y1 = +_[1][1], storyFlow) : [
             [x0, y0],
             [x1, y1]
         ];
+    };
+
+    storyFlow.lineWidth = function (_) {
+        return arguments.length ? (lineWidth = _, storyFlow) : lineWidth;
     };
 
     function layout(data) {
         sortLocationTree(data.locationTree);
         let sequence = constructRelationshipTreeSequence();
         sortRelationTreeSequence(sequence);
-        alignSequence(sequence);
-        console.log(sequence);
+        let alignedSessions = alignSequence(sequence);
+        compactLayout(sequence, alignedSessions);
+        return storyFlow;
     }
 
 
@@ -107,187 +117,113 @@ export default function () {
         }
 
         locationTree.children = sortLocationChildren(locationTree);
-    }
 
-    // locationTree here must have children
-    // sort in same level 
-    function sortLocationChildren(locationTree) {
-        if (locationTree === undefined || !hasChildren(locationTree)) {
-            // earse empty array
-            return undefined;
-        }
-        calculateTotalEntityNum(locationTree, false);
-        let children = locationTree.children;
-        children.sort((a, b) => b.entities.size - a.entities.size);
-        let result = [];
-        result.push(children[0]);
-        children.shift();
-        for (let child of children) {
-            // let initial big enough
-            let minCrossing = Number.MAX_SAFE_INTEGER;
-            let targetIndex = 0;
-            for (let i = 0; i <= result.length; i++) {
-                let crossing = calculateCrossings(result, child, i);
-                // If there is more than one position that introduces the same crossing number, 
-                // we select the top one.
-                if (crossing < minCrossing) {
-                    minCrossing = crossing;
-                    targetIndex = i;
-                }
-            }
-            // insert at targetIndex
-            result.splice(targetIndex, 0, child);
-        }
-        return result;
-    }
-
-    // Each tree node
-    // represents a location and includes all the session IDs that occur at the
-    // location.
-    // including children's 
-    // SessionId -> time span and entity
-    // this function add a set of entities 
-    function calculateTotalEntityNum(locationTree, forced) {
-        let sessionTable = data.sessionTable;
-        // already calculated and not forced to update
-        if (locationTree.entities && !forced) {
-            return locationTree.entities.length;
-        }
-        let result = new Set();
-        if (hasChildren(locationTree)) {
-            // non-leaf add their chilren's entities  
-            for (let child of locationTree.children) {
-                calculateTotalEntityNum(child, forced);
-                for (let entity of child.entities) {
-                    result.add(entity);
-                }
-            }
-        }
-        for (let sessionId of locationTree.sessions) {
-            let entitiesInfo = sessionTable.get(sessionId);
-            if (entitiesInfo === undefined) {
-                // location tree may contain sessions where no entity is there
-                entitiesInfo = [];
-                sessionTable.set(sessionId, entitiesInfo);
-            }
-            for (let info of entitiesInfo) {
-                result.add(info.entity);
-            }
-        }
-        locationTree.entities = result;
-        return result.size;
-    }
-
-    // at this stage all entities in locations are in a set
-    // ignore time span of session because they are almost identical
-    // calculate the minimal crossings
-    function calculateCrossings(tempResult, location, index) {
-        let crossings = 0;
-        // crossings above
-        // pretend location is at index
-        for (let i = index - 1; i >= 0; i--) {
-            let locationAbove = tempResult[i];
-            locationAbove.entityIntersectionNum = (new Set([...location.entities].filter(x => locationAbove.entities.has(x)))).size;
-            let middleCrossings = 0;
-            for (let j = index - 1; j > i; j--) {
-                // these lines which don't winding to location will cause crossing
-                // 
-                let locationInMiddle = tempResult[j];
-                middleCrossings += (locationInMiddle.entities.size - locationInMiddle.entityIntersectionNum);
-            }
-            // each of intersect entity will cause a crossing
-            middleCrossings *= locationAbove.entityIntersectionNum;
-            crossings += middleCrossings;
-        }
-
-        // pretend location is at index - 1
-        for (let i = index; i <= tempResult.length - 1; i++) {
-            let locationBelow = tempResult[i];
-            locationBelow.entityIntersectionNum = (new Set([...location.entities].filter(x => locationBelow.entities.has(x)))).size;
-            let middleCrossings = 0;
-            for (let j = index; j < i; j++) {
-                let locationInMiddle = tempResult[j];
-                middleCrossings += locationInMiddle.entities.size - locationInMiddle.entityIntersectionNum;
-            }
-
-            middleCrossings *= locationBelow.entityIntersectionNum;
-            crossings += middleCrossings;
-
-        }
-        return crossings;
-    }
-
-    function buildSingleRelationshipTree(timeframe) {
-
-        return deepCopyLocationTree(data.locationTree);
-
-        function deepCopyLocationTree(sourceTree) {
-            if (sourceTree === undefined) {
+        // locationTree here must have children
+        // sort in same level 
+        function sortLocationChildren(locationTree) {
+            if (locationTree === undefined || !hasChildren(locationTree)) {
+                // earse empty array
                 return undefined;
             }
-            let targetTree = Object.assign({}, sourceTree);
-            // relationship tree node structure :
-            // locationNode(already sorted by location tree) || => [sessions at this time] => [entities at this time]
-            // entities and sessions are filtered by timeframe
-            targetTree.sessions = sourceTree.sessions.slice();
-            // unnecessary in relationship tree
-            delete targetTree.entities;
-            let sessionToEntities = new Map();
-            targetTree.sessions
-                .map((session) => {
-                    let infoList = data.sessionTable.get(session);
-                    // [start, end) except for maxTimeframe
-                    // because the data is  like {start: 0, end: 7}, {start: 7, end: 21}
-                    let ret = infoList.filter((info) => (info.start <= timeframe && timeframe < info.end) || (timeframe === data.timeSpan.maxTimeframe && timeframe === info.end));
-                    return {
-                        key: session,
-                        value: ret
-                    };
-                })
-                .filter((session) =>
-                    session.value.length != 0
-                )
-                .forEach((entry) =>
-                    sessionToEntities.set(entry.key, entry.value));
-            targetTree.sessions = sessionToEntities;
-
-            if (hasChildren(sourceTree)) {
-                let tempChildren = [];
-                // keep the location tree order here!
-                for (let child of sourceTree.children) {
-                    tempChildren.push(deepCopyLocationTree(child));
+            calculateTotalEntityNum(locationTree, false);
+            let children = locationTree.children;
+            children.sort((a, b) => b.entities.size - a.entities.size);
+            let result = [];
+            result.push(children[0]);
+            children.shift();
+            for (let child of children) {
+                // let initial big enough
+                let minCrossing = Number.MAX_SAFE_INTEGER;
+                let targetIndex = 0;
+                for (let i = 0; i <= result.length; i++) {
+                    let crossing = calculateCrossings(result, child, i);
+                    // If there is more than one position that introduces the same crossing number, 
+                    // we select the top one.
+                    if (crossing < minCrossing) {
+                        minCrossing = crossing;
+                        targetIndex = i;
+                    }
                 }
-                targetTree.children = tempChildren;
+                // insert at targetIndex
+                result.splice(targetIndex, 0, child);
             }
-            return targetTree;
-        }
-    }
+            return result;
 
-    // calculate entity weights and those of their sessions as reference frame
-    // weights of sessions are average of their entities 
-    function getEntitiesOrder(relationshipTree) {
-        let order = 0;
 
-        // use map to get O(1) access 
-        // comparing to arrat.prorotype.indexOf() is O(n)
-        let result = new Map();
-        calculateWeights(relationshipTree);
-        return result;
-
-        function calculateWeights(relationshipTree) {
-            // post-order
-            if (hasChildren(relationshipTree)) {
-                for (let child of relationshipTree.children) {
-                    calculateWeights(child);
+            // Each tree node
+            // represents a location and includes all the session IDs that occur at the
+            // location.
+            // including children's 
+            // SessionId -> time span and entity
+            // this function add a set of entities 
+            function calculateTotalEntityNum(locationTree, forced) {
+                let sessionTable = data.sessionTable;
+                // already calculated and not forced to update
+                if (locationTree.entities && !forced) {
+                    return locationTree.entities.length;
                 }
+                let result = new Set();
+                if (hasChildren(locationTree)) {
+                    // non-leaf add their chilren's entities  
+                    for (let child of locationTree.children) {
+                        calculateTotalEntityNum(child, forced);
+                        for (let entity of child.entities) {
+                            result.add(entity);
+                        }
+                    }
+                }
+                for (let sessionId of locationTree.sessions) {
+                    let entitiesInfo = sessionTable.get(sessionId);
+                    if (entitiesInfo === undefined) {
+                        // location tree may contain sessions where no entity is there
+                        entitiesInfo = [];
+                        sessionTable.set(sessionId, entitiesInfo);
+                    }
+                    for (let info of entitiesInfo) {
+                        result.add(info.entity);
+                    }
+                }
+                locationTree.entities = result;
+                return result.size;
             }
-            // map still preserve input order
-            for (let [_, entitiesInfoArray] of relationshipTree.sessions) {
-                for (let entitiesInfo of entitiesInfoArray) {
-                    // assign to each entity
-                    result.set(entitiesInfo.entity, order);
-                    order += 1;
+
+            // at this stage all entities in locations are in a set
+            // ignore time span of session because they are almost identical
+            // calculate the minimal crossings
+            function calculateCrossings(tempResult, location, index) {
+                let crossings = 0;
+                // crossings above
+                // pretend location is at index
+                for (let i = index - 1; i >= 0; i--) {
+                    let locationAbove = tempResult[i];
+                    locationAbove.entityIntersectionNum = (new Set([...location.entities].filter(x => locationAbove.entities.has(x)))).size;
+                    let middleCrossings = 0;
+                    for (let j = index - 1; j > i; j--) {
+                        // these lines which don't winding to location will cause crossing
+                        // 
+                        let locationInMiddle = tempResult[j];
+                        middleCrossings += (locationInMiddle.entities.size - locationInMiddle.entityIntersectionNum);
+                    }
+                    // each of intersect entity will cause a crossing
+                    middleCrossings *= locationAbove.entityIntersectionNum;
+                    crossings += middleCrossings;
                 }
+
+                // pretend location is at index - 1
+                for (let i = index; i <= tempResult.length - 1; i++) {
+                    let locationBelow = tempResult[i];
+                    locationBelow.entityIntersectionNum = (new Set([...location.entities].filter(x => locationBelow.entities.has(x)))).size;
+                    let middleCrossings = 0;
+                    for (let j = index; j < i; j++) {
+                        let locationInMiddle = tempResult[j];
+                        middleCrossings += locationInMiddle.entities.size - locationInMiddle.entityIntersectionNum;
+                    }
+
+                    middleCrossings *= locationBelow.entityIntersectionNum;
+                    crossings += middleCrossings;
+
+                }
+                return crossings;
             }
         }
     }
@@ -298,6 +234,53 @@ export default function () {
             sequence.push(buildSingleRelationshipTree(timeframe));
         }
         return sequence;
+
+
+        function buildSingleRelationshipTree(timeframe) {
+
+            return deepCopyLocationTree(data.locationTree);
+
+            function deepCopyLocationTree(sourceTree) {
+                if (sourceTree === undefined) {
+                    return undefined;
+                }
+                let targetTree = Object.assign({}, sourceTree);
+                // relationship tree node structure :
+                // locationNode(already sorted by location tree) || => [sessions at this time] => [entities at this time]
+                // entities and sessions are filtered by timeframe
+                targetTree.sessions = sourceTree.sessions.slice();
+                // unnecessary in relationship tree
+                delete targetTree.entities;
+                let sessionToEntities = new Map();
+                targetTree.sessions
+                    .map((session) => {
+                        let infoList = data.sessionTable.get(session);
+                        // [start, end) except for maxTimeframe
+                        // because the data is  like {start: 0, end: 7}, {start: 7, end: 21}
+                        let ret = infoList.filter((info) => (info.start <= timeframe && timeframe < info.end) || (timeframe === data.timeSpan.maxTimeframe && timeframe === info.end));
+                        return {
+                            key: session,
+                            value: ret
+                        };
+                    })
+                    .filter((session) =>
+                        session.value.length != 0
+                    )
+                    .forEach((entry) =>
+                        sessionToEntities.set(entry.key, entry.value));
+                targetTree.sessions = sessionToEntities;
+
+                if (hasChildren(sourceTree)) {
+                    let tempChildren = [];
+                    // keep the location tree order here!
+                    for (let child of sourceTree.children) {
+                        tempChildren.push(deepCopyLocationTree(child));
+                    }
+                    targetTree.children = tempChildren;
+                }
+                return targetTree;
+            }
+        }
     }
 
     // sort sessions and entities within each relationship tree node
@@ -324,69 +307,101 @@ export default function () {
                 referenceTree = rtree;
             }
         }
-    }
 
-    function sortRelationTreeByReference(referenceTree, rtree) {
-        let order = referenceTree.order;
-        sortSingleRelationTree(rtree);
-        // update order after sorting
-        rtree.order = getEntitiesOrder(rtree);
+        // calculate entity weights and those of their sessions as reference frame
+        // weights of sessions are average of their entities 
+        function getEntitiesOrder(relationshipTree) {
+            let order = 0;
 
-        function sortSingleRelationTree(target) {
-            if (target === undefined) {
-                return;
-            }
-            // post-order dfs
-            if (hasChildren(target)) {
-                for (let child of target.children) {
-                    sortSingleRelationTree(child);
+            // use map to get O(1) access 
+            // comparing to arrat.prorotype.indexOf() is O(n)
+            let result = new Map();
+            calculateWeights(relationshipTree);
+            return result;
+
+            function calculateWeights(relationshipTree) {
+                // post-order
+                if (hasChildren(relationshipTree)) {
+                    for (let child of relationshipTree.children) {
+                        calculateWeights(child);
+                    }
+                }
+                // map still preserve input order
+                for (let [_, entitiesInfoArray] of relationshipTree.sessions) {
+                    for (let entitiesInfo of entitiesInfoArray) {
+                        // assign to each entity
+                        result.set(entitiesInfo.entity, order);
+                        order += 1;
+                    }
                 }
             }
-            let sessionWeights = new Map();
-            for (let [sessionId, entityInfoArray] of target.sessions) {
-                let validWeight = 0;
-                let validNum = 0;
-                // sort within a session (second level)
-                entityInfoArray.sort((a, b) => {
-                    let weightOfA = order.get(a.entity);
-                    let weightOfB = order.get(b.entity);
-                    // push eneities not in reference frame in back
-                    if (weightOfA === undefined && weightOfB === undefined) {
-                        return 0;
-                    }
-                    if (weightOfA === undefined) {
-                        return 1;
-                    }
-                    if (weightOfB === undefined) {
-                        return -1;
-                    }
-                    return weightOfA - weightOfB;
-                });
+        }
 
-                entityInfoArray.forEach((entityInfo) => {
-                    let weight = order.get(entityInfo.entity);
-                    if (weight) {
-                        validWeight += weight;
-                        validNum += 1;
-                    }
-                });
+        function sortRelationTreeByReference(referenceTree, rtree) {
+            let order = referenceTree.order;
+            sortSingleRelationTree(rtree);
+            // update order after sorting
+            rtree.order = getEntitiesOrder(rtree);
 
-                let weightOfSession = Number.MAX_SAFE_INTEGER;
-                if (validNum !== 0) {
-                    // all entities in this session is not in reference frame, push it to back
-                    weightOfSession = validWeight / validNum;
+            function sortSingleRelationTree(target) {
+                if (target === undefined) {
+                    return;
                 }
-                sessionWeights.set(sessionId, weightOfSession);
+                // post-order dfs
+                if (hasChildren(target)) {
+                    for (let child of target.children) {
+                        sortSingleRelationTree(child);
+                    }
+                }
+                let sessionWeights = new Map();
+                for (let [sessionId, entityInfoArray] of target.sessions) {
+                    let validWeight = 0;
+                    let validNum = 0;
+                    // sort within a session (second level)
+                    entityInfoArray.sort((a, b) => {
+                        let weightOfA = order.get(a.entity);
+                        let weightOfB = order.get(b.entity);
+                        // push eneities not in reference frame in back
+                        if (weightOfA === undefined && weightOfB === undefined) {
+                            return 0;
+                        }
+                        if (weightOfA === undefined) {
+                            return 1;
+                        }
+                        if (weightOfB === undefined) {
+                            return -1;
+                        }
+                        return weightOfA - weightOfB;
+                    });
+
+                    entityInfoArray.forEach((entityInfo) => {
+                        let weight = order.get(entityInfo.entity);
+                        if (weight) {
+                            validWeight += weight;
+                            validNum += 1;
+                        }
+                    });
+
+                    let weightOfSession = Number.MAX_SAFE_INTEGER;
+                    if (validNum !== 0) {
+                        // all entities in this session is not in reference frame, push it to back
+                        weightOfSession = validWeight / validNum;
+                    }
+                    sessionWeights.set(sessionId, weightOfSession);
+                }
+                // sort sessions
+                target.sessions = new Map([...target.sessions].sort((a, b) =>
+                    // a[0] is key of entry
+                    sessionWeights.get(a[0]) - sessionWeights.get(b[0])
+                ));
             }
-            // sort sessions
-            target.sessions = new Map([...target.sessions].sort((a, b) =>
-                // a[0] is key of entry
-                sessionWeights.get(a[0]) - sessionWeights.get(b[0])
-            ));
         }
     }
 
     function alignSequence(sequence) {
+        let result = [];
+        // initial position has no aligned pairs
+        result.push(new Map());
         for (let i = 0; i + 1 < sequence.length; i++) {
             let previous = sequence[i];
             let next = sequence[i + 1];
@@ -400,7 +415,30 @@ export default function () {
             let nextOrder = getSessionOrder(next);
             next.sessionOrder = nextOrder;
 
-            alignSingleGap(previousOrder, nextOrder);
+            result.push(alignSingleGap(previousOrder, nextOrder));
+        }
+
+        return result;
+
+        function getSessionOrder(root) {
+            let result = [];
+            dfsGetOrder(root);
+            // the output array should use index that starts from 1 for dynammic programming
+            result.unshift(undefined);
+            return result;
+
+            function dfsGetOrder(rtree) {
+                if (hasChildren(rtree)) {
+                    for (let child of rtree.children) {
+                        dfsGetOrder(child);
+                    }
+                }
+                delete rtree.order;
+                for (let entry of rtree.sessions) {
+                    result.push(entry);
+                }
+            }
+
         }
 
         // previousOrder: [[sessionId, [EntityInfo: {entity: String, start:Int, end:Int}]]
@@ -408,8 +446,9 @@ export default function () {
         // the input array should use index that starts from 1
         function alignSingleGap(previousOrder, nextOrder) {
 
+            // use undefined to indicate that the orders are identical
             if (isIdenticalOrder(previousOrder, nextOrder)) {
-                return;
+                return undefined;
             }
 
             // the input array should use index that starts from 1
@@ -441,11 +480,11 @@ export default function () {
                     dynamicTable[i][j] = max;
 
                     switch (max) {
-                        case left:
-                            pathDirection = LEFT;
-                            break;
                         case leftUp:
                             pathDirection = LEFT_UP;
+                            break;
+                        case left:
+                            pathDirection = LEFT;
                             break;
                         case up:
                             pathDirection = UP;
@@ -458,7 +497,7 @@ export default function () {
                 }
             }
 
-            let alignedSessionPairs = getAlignedSessionPairs(pathTable);
+            return getAlignedSessionPairs(pathTable);
 
             function isIdenticalOrder(previousOrder, nextOrder) {
                 if (previousOrder.length !== nextOrder.length) {
@@ -529,7 +568,7 @@ export default function () {
             }
 
             function getAlignedSessionPairs(pathTable) {
-                let result = [];
+                let result = new Map();
 
                 let m = pathTable.length - 1;
                 let n = pathTable[m].length - 1;
@@ -541,7 +580,9 @@ export default function () {
 
                     switch (target) {
                         case LEFT_UP:
-                            result.push([m, n]);
+                            // one session can align up to one session
+                            // so use map, use session in t+1 as key for convenience in QP
+                            result.set(n, m);
                             m -= 1;
                             n -= 1;
                             break;
@@ -561,25 +602,15 @@ export default function () {
         }
     }
 
-    function getSessionOrder(root) {
-        let result = [];
-        dfsGetOrder(root);
-        // the output array should use index that starts from 1 for dynammic programming
-        result.unshift(undefined);
-        return result;
+    function compactLayout(sequence, alignedSessions) {
+        console.log(sequence);
+        console.log(alignedSessions);
 
-        function dfsGetOrder(rtree) {
-            if (hasChildren(rtree)) {
-                for (let child of rtree.children) {
-                    dfsGetOrder(child);
-                }
-            }
-            delete rtree.order;
-            for (let entry of rtree.sessions) {
-                result.push(entry);
-            }
-        }
+        let nt = alignedSessions.length;
 
+        alignedSessions.forEach((v, i) => {
+
+        });
     }
 
     return storyFlow;
