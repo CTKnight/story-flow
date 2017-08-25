@@ -35,6 +35,7 @@
         "d3": "^4.10.0",
         "d3-selection-multi": "^1.0.1",
         "html-webpack-plugin": "^2.29.0",
+        "quadprog": "^1.5.1",
         "webpack": "^3.3.0",
         "webpack-dev-server": "^2.6.1"
     },

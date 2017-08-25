@@ -1,4 +1,6 @@
-import {solveQP} from "quadprog";
+import {
+    solveQP
+} from "quadprog";
 
 function defaultGetLocationTree(data) {
     return data.locationTree;
@@ -400,8 +402,8 @@ export default function () {
 
     function alignSequence(sequence) {
         let result = [];
+        result.push(undefined);
         // initial position has no aligned pairs
-        result.push(new Map());
         for (let i = 0; i + 1 < sequence.length; i++) {
             let previous = sequence[i];
             let next = sequence[i + 1];
@@ -603,14 +605,49 @@ export default function () {
     }
 
     function compactLayout(sequence, alignedSessions) {
-        console.log(sequence);
-        console.log(alignedSessions);
 
-        let nt = alignedSessions.length;
+        let compactSequence = new Map();
+        let compactAlignedSessions = new Map();
 
+        const sameSessionGap = 3 * lineWidth,
+            diffSessionGap = 9 * lineWidth;
+
+        // initial rtree
+        compactSequence.set(0, sequence[0]);
+
+        let maxEntitiesNum = 0;
         alignedSessions.forEach((v, i) => {
-
+            if (v) {
+                // v is not undefined so it contains aligned session pairs
+                // between i and i - 1 timeframe
+                compactSequence.set(i, sequence[i]);
+                compactSequence.set(i - 1, sequence[i - 1]);
+                maxEntitiesNum = Math.max(maxEntitiesNum, countEntitiesNum(sequence[i]), countEntitiesNum(sequence[i - 1]));
+                compactAlignedSessions.set(i, v);
+            }
         });
+        console.log(compactSequence);
+        console.log(compactAlignedSessions);
+
+
+        // s(i, j) is the line segment for entity i at time j
+        let indexTable = create2DArray(maxEntitiesNum + 1, compactSequence.size + 1);
+
+        for(let item of [...compactSequence].sort((l, r) => l[0] - r[0])) {
+            
+        }
+
+        function countEntitiesNum(rtree) {
+            // filter undefined
+            let sessionOrder = rtree.sessionOrder.filter(v => v);
+            let entitiesNum = 0;
+
+            for (let [sessionId, entities] of sessionOrder) {
+                entitiesNum += entities.length;
+            }
+
+            return entitiesNum;
+        }
     }
 
     return storyFlow;
