@@ -14,10 +14,6 @@ function defaultGetWeight(entity) {
     return entity.weight;
 }
 
-function defaultTimeSpan(data) {
-    return data.timeSpan;
-}
-
 function defaultEntities(data) {
     return data.entities;
 }
@@ -73,7 +69,6 @@ export default function () {
         lineWidth = 3;
     // data: locationTree: TreeNode
     // sessionTable: Map<Int, EntityInfo[]>
-    // timeSpan: {maxTimeframe:Int, minTimeframe:Int}
     // entities: [string];
     function storyFlow() {
         data = {
@@ -114,26 +109,25 @@ export default function () {
         // use set to remove duplicate
         let entities = new Set(),
             keyTimeframe = new Set(),
-            minTimeframe = Number.MAX_SAFE_INTEGER,
-            maxTimeframe = Number.MIN_SAFE_INTEGER;
-
+            maxTimeframeTable = new Map();
         for (let [sessionId, entityInfoArray] of data.sessionTable) {
-            for (let entityInfo of entityInfoArray) {
-                entities.add(entityInfo.entity);
+            entityInfoArray.forEach((entityInfo) => {
+                let entity = entityInfo.entity;
+                if (!entities.has(entity)) {
+                    entities.add(entity);
+                    maxTimeframeTable.set(entity, Number.MIN_SAFE_INTEGER);
+                }
                 keyTimeframe.add(entityInfo.start);
                 keyTimeframe.add(entityInfo.end);
-                minTimeframe = Math.min(entityInfo.start, minTimeframe);
-                maxTimeframe = Math.max(entityInfo.end, maxTimeframe);
-            }
+                if (entityInfo.end > maxTimeframeTable.get(entity)) {
+                    maxTimeframeTable.set(entity, entityInfo.end);
+                }
+            });
         }
 
-        data.timeSpan = {
-            maxTimeframe: maxTimeframe,
-            minTimeframe: minTimeframe
-        };
         data.entities = [...entities];
         data.keyTimeframe = [...keyTimeframe].sort((a, b) => a - b);
-
+        data.maxTimeframeTable = maxTimeframeTable;
     }
 
     function sortLocationTree(locationTree) {
@@ -265,7 +259,7 @@ export default function () {
         let sequence = [];
         // not necessary to build all timeframe 
         // just build at timeframe when change happens
-        for(let timeframe of data.keyTimeframe) {
+        for (let timeframe of data.keyTimeframe) {
             sequence.push([timeframe, buildSingleRelationshipTree(timeframe)]);
         }
         return sequence;
@@ -292,7 +286,9 @@ export default function () {
                         let infoList = data.sessionTable.get(session);
                         // [start, end) except for maxTimeframe
                         // because the data is  like {start: 0, end: 7}, {start: 7, end: 21}
-                        let ret = infoList.filter((info) => (info.start <= timeframe && timeframe < info.end) || (timeframe === data.timeSpan.maxTimeframe && timeframe === info.end));
+                        // second condition is for the last session in this entity
+                        let ret = infoList.filter((info) => (info.start <= timeframe && timeframe < info.end) ||
+                            (timeframe === data.maxTimeframeTable.get(info.entity) && timeframe === info.end));
                         return {
                             key: session,
                             value: ret
@@ -325,7 +321,7 @@ export default function () {
             let referenceTree;
             for (let j = 0; j < sequence.length; j++) {
                 // sequence is [[timeframe, rtree]]
-                let rtree = sequence[j][1];
+                let [_, rtree] = sequence[j];
                 if (referenceTree === undefined) {
                     referenceTree = rtree;
                     // use initial as reference
@@ -338,7 +334,7 @@ export default function () {
             }
             // sweep from the last but 2 rtree
             for (let j = sequence.length - 2; j >= 0; j--) {
-                let rtree = sequence[j][1];
+                let [_, rtree] = sequence[j];
                 sortRelationTreeByReference(referenceTree, rtree);
                 referenceTree = rtree;
             }
@@ -439,8 +435,8 @@ export default function () {
         result.push([0, undefined]);
         // initial position has no aligned pairs
         for (let i = 0; i + 1 < sequence.length; i++) {
-            let previous = sequence[i][1];
-            let next = sequence[i + 1][1];
+            let [_, previous] = sequence[i];
+            let [__, next] = sequence[i + 1];
 
             let previousOrder = previous.sessionOrder;
             if (previousOrder === undefined) {
@@ -541,8 +537,8 @@ export default function () {
                     return false;
                 }
                 for (let i = 1; i < previousOrder.length; i++) {
-                    let previousEntitiesInfoArray = previousOrder[i];
-                    let nextEntitiesInfoArray = nextOrder[i];
+                    let [_, previousEntitiesInfoArray] = previousOrder[i];
+                    let [__, nextEntitiesInfoArray] = nextOrder[i];
                     if (previousEntitiesInfoArray.length !== nextEntitiesInfoArray.length) {
                         return false;
                     }
@@ -644,7 +640,6 @@ export default function () {
         const sameSessionGap = SAME_SESSION_FACTOR * lineWidth,
             diffSessionGap = DIFFERENT_SESSION_FACTOR * lineWidth;
 
-
         console.log(sequence);
         console.log(alignedSessions);
 
@@ -665,18 +660,6 @@ export default function () {
         }
 
         console.log(indexTable);
-
-        function countEntitiesNum(rtree) {
-            // filter undefined
-            let sessionOrder = rtree.sessionOrder.filter(v => v);
-            let entitiesNum = 0;
-
-            for (let [sessionId, entities] of sessionOrder) {
-                entitiesNum += entities.length;
-            }
-
-            return entitiesNum;
-        }
     }
 
     return storyFlow;
