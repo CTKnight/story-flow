@@ -23,9 +23,7 @@ d3.xml("../test/Data/LetBulletFly.xml", (error, data) => {
 // read in xml string and return location tree and session table
 function readFromXML(xml) {
     let locationTree = {},
-        sessionTable = new Map(),
-        minTimeframe = Number.MAX_SAFE_INTEGER,
-        maxTimeframe = Number.MIN_SAFE_INTEGER;
+        sessionTable = new Map();
     let story = xml.querySelector("Story");
     if (story) {
         // characters array, add entities to SessionTable
@@ -58,15 +56,11 @@ function readFromXML(xml) {
 
     return {
         locationTree: locationTree,
-        sessionTable: sessionTable,
-        timeSpan: {
-            maxTimeframe: maxTimeframe,
-            minTimeframe: minTimeframe
-        }
+        sessionTable: sessionTable
     };
 
     function constructSessionTable(characters) {
-        let result = new Map();
+        let sessionTable = new Map();
         characters = characters.querySelectorAll("Character");
         for (let character of characters) {
             // just give it an alias but not copy
@@ -76,26 +70,19 @@ function readFromXML(xml) {
                 session.sessionId = sessionId;
                 session.start = Number(session.getAttribute("Start"));
                 session.end = Number(session.getAttribute("End"));
-
                 let entityInfo = {
                     start: session.start,
                     end: session.end,
                     entity: character.getAttribute("Name")
                 };
-                if (entityInfo.start < minTimeframe) {
-                    minTimeframe = entityInfo.start;
-                }
-                if (entityInfo.end > maxTimeframe) {
-                    maxTimeframe = entityInfo.end;
-                }
-                if (!result.has(sessionId)) {
-                    result.set(sessionId, [entityInfo]);
+                if (!sessionTable.has(sessionId)) {
+                    sessionTable.set(sessionId, [entityInfo]);
                 } else {
-                    result.get(sessionId).push(entityInfo);
+                    sessionTable.get(sessionId).push(entityInfo);
                 }
             }
         }
-        return result;
+        return sessionTable;
     }
 
     // construct a copy a tree

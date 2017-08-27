@@ -10,16 +10,20 @@ function defaultGetSessionTable(data) {
     return data.sessionTable;
 }
 
-function defaultInvertedIndex(data) {
-    return data.characterSessionInvertedIndex;
-}
-
 function defaultGetWeight(entity) {
     return entity.weight;
 }
 
 function defaultTimeSpan(data) {
     return data.timeSpan;
+}
+
+function defaultEntities(data) {
+    return data.entities;
+}
+
+function defaultKeyTimeframe(data) {
+    return data.keyTimeframe;
 }
 
 function hasChildren(_) {
@@ -70,11 +74,11 @@ export default function () {
     // data: locationTree: TreeNode
     // sessionTable: Map<Int, EntityInfo[]>
     // timeSpan: {maxTimeframe:Int, minTimeframe:Int}
+    // entities: [string];
     function storyFlow() {
         data = {
             locationTree: defaultGetLocationTree.apply(null, arguments),
-            sessionTable: defaultGetSessionTable.apply(null, arguments),
-            timeSpan: defaultTimeSpan.apply(null, arguments)
+            sessionTable: defaultGetSessionTable.apply(null, arguments)
         };
         layout(data);
         // return graph and relationshipTree for UI
@@ -96,6 +100,7 @@ export default function () {
     };
 
     function layout(data) {
+        preprocessData(data);
         sortLocationTree(data.locationTree);
         let sequence = constructRelationshipTreeSequence();
         sortRelationTreeSequence(sequence);
@@ -104,6 +109,32 @@ export default function () {
         return storyFlow;
     }
 
+    function preprocessData(data) {
+        console.log(data);
+        // use set to remove duplicate
+        let entities = new Set(),
+            keyTimeframe = new Set(),
+            minTimeframe = Number.MAX_SAFE_INTEGER,
+            maxTimeframe = Number.MIN_SAFE_INTEGER;
+
+        for (let [sessionId, entityInfoArray] of data.sessionTable) {
+            for (let entityInfo of entityInfoArray) {
+                entities.add(entityInfo.entity);
+                keyTimeframe.add(entityInfo.start);
+                keyTimeframe.add(entityInfo.end);
+                minTimeframe = Math.min(entityInfo.start, minTimeframe);
+                maxTimeframe = Math.max(entityInfo.end, maxTimeframe);
+            }
+        }
+
+        data.timeSpan = {
+            maxTimeframe: maxTimeframe,
+            minTimeframe: minTimeframe
+        };
+        data.entities = [...entities];
+        data.keyTimeframe = [...keyTimeframe].sort((a, b) => a - b);
+
+    }
 
     function sortLocationTree(locationTree) {
         // recursion exit
@@ -232,8 +263,10 @@ export default function () {
 
     function constructRelationshipTreeSequence() {
         let sequence = [];
-        for (let timeframe = data.timeSpan.minTimeframe; timeframe < data.timeSpan.maxTimeframe; timeframe++) {
-            sequence.push(buildSingleRelationshipTree(timeframe));
+        // not necessary to build all timeframe 
+        // just build at timeframe when change happens
+        for(let timeframe of data.keyTimeframe) {
+            sequence.push([timeframe, buildSingleRelationshipTree(timeframe)]);
         }
         return sequence;
 
@@ -291,7 +324,8 @@ export default function () {
         for (let i = 0; i < MAX_SORT_LOOP / 2; i++) {
             let referenceTree;
             for (let j = 0; j < sequence.length; j++) {
-                let rtree = sequence[j];
+                // sequence is [[timeframe, rtree]]
+                let rtree = sequence[j][1];
                 if (referenceTree === undefined) {
                     referenceTree = rtree;
                     // use initial as reference
@@ -304,7 +338,7 @@ export default function () {
             }
             // sweep from the last but 2 rtree
             for (let j = sequence.length - 2; j >= 0; j--) {
-                let rtree = sequence[j];
+                let rtree = sequence[j][1];
                 sortRelationTreeByReference(referenceTree, rtree);
                 referenceTree = rtree;
             }
@@ -402,11 +436,11 @@ export default function () {
 
     function alignSequence(sequence) {
         let result = [];
-        result.push(undefined);
+        result.push([0, undefined]);
         // initial position has no aligned pairs
         for (let i = 0; i + 1 < sequence.length; i++) {
-            let previous = sequence[i];
-            let next = sequence[i + 1];
+            let previous = sequence[i][1];
+            let next = sequence[i + 1][1];
 
             let previousOrder = previous.sessionOrder;
             if (previousOrder === undefined) {
@@ -416,8 +450,9 @@ export default function () {
 
             let nextOrder = getSessionOrder(next);
             next.sessionOrder = nextOrder;
-
-            result.push(alignSingleGap(previousOrder, nextOrder));
+            // it contains aligned session pairs
+            // between j and j - 1 timeframe
+            result.push([sequence[i + 1][0], alignSingleGap(previousOrder, nextOrder)]);
         }
 
         return result;
@@ -606,36 +641,30 @@ export default function () {
 
     function compactLayout(sequence, alignedSessions) {
 
-        let compactSequence = new Map();
-        let compactAlignedSessions = new Map();
+        const sameSessionGap = SAME_SESSION_FACTOR * lineWidth,
+            diffSessionGap = DIFFERENT_SESSION_FACTOR * lineWidth;
 
-        const sameSessionGap = 3 * lineWidth,
-            diffSessionGap = 9 * lineWidth;
 
-        // initial rtree
-        compactSequence.set(0, sequence[0]);
-
-        let maxEntitiesNum = 0;
-        alignedSessions.forEach((v, i) => {
-            if (v) {
-                // v is not undefined so it contains aligned session pairs
-                // between i and i - 1 timeframe
-                compactSequence.set(i, sequence[i]);
-                compactSequence.set(i - 1, sequence[i - 1]);
-                maxEntitiesNum = Math.max(maxEntitiesNum, countEntitiesNum(sequence[i]), countEntitiesNum(sequence[i - 1]));
-                compactAlignedSessions.set(i, v);
-            }
-        });
-        console.log(compactSequence);
-        console.log(compactAlignedSessions);
-
+        console.log(sequence);
+        console.log(alignedSessions);
 
         // s(i, j) is the line segment for entity i at time j
-        let indexTable = create2DArray(maxEntitiesNum + 1, compactSequence.size + 1);
-
-        for(let item of [...compactSequence].sort((l, r) => l[0] - r[0])) {
-            
+        // use as variable index
+        let indexTable = new Map();
+        for (let entity of data.entities) {
+            indexTable.set(entity, new Map());
         }
+
+        let index = 0;
+        for (let [timeFrame, rtree] of sequence) {
+            for (let [sessionId, entitiesInfo] of rtree.sessionOrder.filter(v => v)) {
+                for (let entityInfo of entitiesInfo) {
+                    indexTable.get(entityInfo.entity).set(timeFrame, index++);
+                }
+            }
+        }
+
+        console.log(indexTable);
 
         function countEntitiesNum(rtree) {
             // filter undefined
