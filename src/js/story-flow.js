@@ -26,8 +26,8 @@ function hasChildren(_) {
     return !(!Array.isArray(_.children) || _.children.length === 0);
 }
 
-function create2DArray(row, column) {
-    return [...Array(row).keys()].map(() => Array(column));
+function create2DArray(row, column, defaultValue) {
+    return defaultValue === undefined ? [...Array(row).keys()].map(() => Array(column)) : [...Array(row).keys()].map(() => Array(column).fill(defaultValue));
 }
 // children function should return [node]? 
 // post-order dfs util function
@@ -554,7 +554,7 @@ export default function () {
             }
 
             function similarity(sessionA, sessionB) {
-                return longestCommonSubsquenceLength(sessionA, sessionB) +
+                return longestCommonSubstringLength(sessionA, sessionB) +
                     RELATIVE_FACTOR_ALPHA * relativeSimilarity(
                         previousOrder.indexOf(sessionA),
                         nextOrder.indexOf(sessionB),
@@ -562,9 +562,12 @@ export default function () {
                         nextOrder.length);
             }
 
-            function longestCommonSubsquenceLength(sessionA, sessionB) {
+            // maximum number of straight segments we can get is LC-substring problem
+            // https://www.wikiwand.com/en/Longest_common_substring_problem
+            function longestCommonSubstringLength(sessionA, sessionB) {
                 // session: [sessionId, [EntityInfo]]
                 // make its index starts from 1 for DP 
+                // copy array for re-entrance
                 let reference = sessionA[1].slice();
                 reference.unshift(undefined);
                 let target = sessionB[1].slice();
@@ -572,6 +575,8 @@ export default function () {
 
                 let m = sessionA[1].length;
                 let n = sessionB[1].length;
+                let z = 0;
+                let result = [];
 
                 let table = create2DArray(m + 1, n + 1);
 
@@ -584,15 +589,21 @@ export default function () {
 
                 for (let i = 1; i <= m; i++) {
                     for (let j = 1; j <= n; j++) {
-                        if (reference[i].entity == target[j].entity) {
+                        if (reference[i].entity === target[j].entity) {
                             table[i][j] = table[i - 1][j - 1] + 1;
+                            if (table[i][j] > z) {
+                                z = table[i][j];
+                                result = reference.slice(i - z + 1, i);
+                            } else if (table[i][j] === z) {
+                                result.concat(reference.slice(i - z + 1, i));
+                            }
                         } else {
-                            table[i][j] = Math.max(table[i - 1][j], table[i][j - 1]);
+                            table[i][j] = 0;
                         }
                     }
                 }
 
-                return table[m][n];
+                return result.length;
             }
 
             // i,j is session index, m,n is session squence length
@@ -654,12 +665,46 @@ export default function () {
         for (let [timeFrame, rtree] of sequence) {
             for (let [sessionId, entitiesInfo] of rtree.sessionOrder.filter(v => v)) {
                 for (let entityInfo of entitiesInfo) {
-                    indexTable.get(entityInfo.entity).set(timeFrame, index++);
+                    indexTable.get(entityInfo.entity).set(timeFrame, ++index);
                 }
             }
         }
 
         console.log(indexTable);
+
+        // the amount of constrain is not known yet
+        // Amat is n * m matrix
+        // m constraints and n variables
+        // index base 1
+        // at here index is the total count of vars
+        let Amat = create2DArray(index + 1, 0);
+
+        let Dmat = create2DArray(index + 1, index + 1, 0);
+        for (let i = 0; i + 1 < sequence.length; i++) {
+            let timeGap = sequence[i + 1][0] - sequence[i][0];
+            secondTerm(sequence[i][1].sessionOrder, sequence[i][0], timeGap);
+        }
+        // the last rtree
+        let lastTree = sequence[sequence.length - 1];
+        if (lastTree) {
+            secondTerm(lastTree[1].sessionOrder, lastTree[0], 1);
+        }
+        console.log(Amat);
+        console.log(Dmat);
+
+        // construct equality contraints first
+        let equalityConCount = 0,
+            constraintsCount = 0;
+        // solveQP();
+        function secondTerm(sessionOrder, timeframe, timeGap) {
+            sessionOrder = sessionOrder.filter(v => v);
+            for (let [sessionId, entityInfoArray] of sessionOrder) {
+                for (let entityInfo of entityInfoArray) {
+                    let sij = indexTable.get(entityInfo.entity).get(timeframe);
+                    Dmat[sij][sij] = timeGap;
+                }
+            }
+        }
     }
 
     return storyFlow;
