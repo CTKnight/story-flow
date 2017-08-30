@@ -47,6 +47,50 @@ function postOrderDfsVisit(node, visitFunction, childrenFunction) {
     visitFunction(node);
 }
 
+// maximum number of straight segments we can get is LC-substring problem
+// https://www.wikiwand.com/en/Longest_common_substring_problem
+function longestCommonSubstringLength(sessionA, sessionB) {
+    // session: [sessionId, [EntityInfo]]
+    // make its index starts from 1 for DP 
+    // copy array for re-entrance
+    let reference = sessionA[1].slice();
+    reference.unshift(undefined);
+    let target = sessionB[1].slice();
+    target.unshift(undefined);
+
+    let m = sessionA[1].length;
+    let n = sessionB[1].length;
+    let z = 0;
+    let result = [];
+
+    let table = create2DArray(m + 1, n + 1);
+
+    for (let i = 0; i <= m; i++) {
+        table[i][0] = 0;
+    }
+    for (let i = 0; i <= n; i++) {
+        table[0][i] = 0;
+    }
+
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (reference[i].entity === target[j].entity) {
+                table[i][j] = table[i - 1][j - 1] + 1;
+                if (table[i][j] > z) {
+                    z = table[i][j];
+                    result = reference.slice(i - z + 1, i);
+                } else if (table[i][j] === z) {
+                    result.concat(reference.slice(i - z + 1, i));
+                }
+            } else {
+                table[i][j] = 0;
+            }
+        }
+    }
+
+    return result.length;
+}
+
 export default function () {
     // for some special cases like dummy head
     const MAX_SORT_LOOP = 20;
@@ -562,49 +606,7 @@ export default function () {
                         nextOrder.length);
             }
 
-            // maximum number of straight segments we can get is LC-substring problem
-            // https://www.wikiwand.com/en/Longest_common_substring_problem
-            function longestCommonSubstringLength(sessionA, sessionB) {
-                // session: [sessionId, [EntityInfo]]
-                // make its index starts from 1 for DP 
-                // copy array for re-entrance
-                let reference = sessionA[1].slice();
-                reference.unshift(undefined);
-                let target = sessionB[1].slice();
-                target.unshift(undefined);
 
-                let m = sessionA[1].length;
-                let n = sessionB[1].length;
-                let z = 0;
-                let result = [];
-
-                let table = create2DArray(m + 1, n + 1);
-
-                for (let i = 0; i <= m; i++) {
-                    table[i][0] = 0;
-                }
-                for (let i = 0; i <= n; i++) {
-                    table[0][i] = 0;
-                }
-
-                for (let i = 1; i <= m; i++) {
-                    for (let j = 1; j <= n; j++) {
-                        if (reference[i].entity === target[j].entity) {
-                            table[i][j] = table[i - 1][j - 1] + 1;
-                            if (table[i][j] > z) {
-                                z = table[i][j];
-                                result = reference.slice(i - z + 1, i);
-                            } else if (table[i][j] === z) {
-                                result.concat(reference.slice(i - z + 1, i));
-                            }
-                        } else {
-                            table[i][j] = 0;
-                        }
-                    }
-                }
-
-                return result.length;
-            }
 
             // i,j is session index, m,n is session squence length
             function relativeSimilarity(i, j, m, n) {
@@ -684,6 +686,10 @@ export default function () {
             let timeGap = sequence[i + 1][0] - sequence[i][0];
             secondTerm(sequence[i][1].sessionOrder, sequence[i][0], timeGap);
         }
+
+        let bvec = [];
+        let dvec = new Array(index + 1);
+        dvec.fill(0);
         // the last rtree
         let lastTree = sequence[sequence.length - 1];
         if (lastTree) {
@@ -708,10 +714,39 @@ export default function () {
         let equalityConCount = 0,
             constraintsCount = 0;
         // construct constraints matrix according to extent, alignments and fomulas
+        // eq constraint 1: entities under same sessions
+        for (let [timeframe, rtree] of sequence) {
+            let sessionOrder = rtree.sessionOrder.filter(v => v);
+            for (let [sessionId, entityInfoArray] of sessionOrder) {
+                let lastEntityIndex;
+                for (let entityInfo of entityInfoArray) {
+                    let currentEntityIndex = indexTable.get(entityInfo.entity).get(timeframe);
+                    if (lastEntityIndex === undefined) {
+                        lastEntityIndex = currentEntityIndex;
+                        continue;
+                    } else {
+                        equalityConCount++;
+                        constraintsCount++;
+                        Amat[lastEntityIndex][equalityConCount] = -1;
+                        Amat[currentEntityIndex][equalityConCount] = 1;
+                        bvec[equalityConCount] = sameSessionGap;
+                        lastEntityIndex = currentEntityIndex;
+                    }
+                }
+            }
+        }
+        // eq constraint 2: aligned entities
+
+        // ineq constraint 3: different session entities gap
+
+        // ineq range 0 <= y <= y_max
+
         // solveQP();
 
         console.log(Amat);
         console.log(Dmat);
+        console.log(bvec);
+
         function secondTerm(sessionOrder, timeframe, timeGap) {
             sessionOrder = sessionOrder.filter(v => v);
             for (let [sessionId, entityInfoArray] of sessionOrder) {
