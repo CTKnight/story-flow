@@ -689,19 +689,35 @@ export default function () {
         if (lastTree) {
             secondTerm(lastTree[1].sessionOrder, lastTree[0], 1);
         }
-        console.log(Amat);
-        console.log(Dmat);
+        // first term
+        for (let [entity, indexMap] of indexTable) {
+            let timeframeOfEntity = [...indexMap].sort((a, b) => a[0] - b[0]);
+            for (let i = 1; i < timeframeOfEntity.length; i++) {
+                let previousIndex = timeframeOfEntity[i - 1][1];
+                let currentIndex = timeframeOfEntity[i][1];
+                // (y1 - y2)^2 = y1^2 - y1*y2 - y2*y1 + y2^2
+                // which makes it symmetric 
+                Dmat[previousIndex][previousIndex] += 1;
+                Dmat[currentIndex][currentIndex] += 1;
+                Dmat[previousIndex][currentIndex] -= 1;
+                Dmat[currentIndex][previousIndex] -= 1;
+            }
+        }
 
         // construct equality contraints first
         let equalityConCount = 0,
             constraintsCount = 0;
+        // construct constraints matrix according to extent, alignments and fomulas
         // solveQP();
+
+        console.log(Amat);
+        console.log(Dmat);
         function secondTerm(sessionOrder, timeframe, timeGap) {
             sessionOrder = sessionOrder.filter(v => v);
             for (let [sessionId, entityInfoArray] of sessionOrder) {
                 for (let entityInfo of entityInfoArray) {
                     let sij = indexTable.get(entityInfo.entity).get(timeframe);
-                    Dmat[sij][sij] = timeGap;
+                    Dmat[sij][sij] += timeGap;
                 }
             }
         }
