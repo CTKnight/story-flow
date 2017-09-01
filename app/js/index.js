@@ -1,23 +1,38 @@
 import storyflow from "../../src/js/story-flow";
 import * as d3 from "d3";
+import "d3-selection-multi";
 
-import {
-    draw
-} from "./draw";
-
-d3.xml("../test/Data/LetBulletFly.xml", (error, data) => {
+import storyflowlinkHorizontal from "../../src/js/linkHorizontal";
+d3.xml("../test/Data/redhat.xml", (error, data) => {
     if (error) {
         throw error;
     }
-    let generator = storyflow();
+    let svg = d3.select("svg"),
+        width = +svg.attr("width"),
+        height = +svg.attr("height");
+    let generator = storyflow().extent([
+            [0, 0],
+            [width, height]
+        ])
+        .lineWidth(3);
     console.time("read");
     data = readFromXML(data);
     console.timeEnd("read");
 
     console.time("layout");
-    generator(data);
+    let graph = generator(data);
     console.timeEnd("layout");
-    // draw();
+    const linkAttr = {
+        "d": storyflowlinkHorizontal(),
+        "stroke-width": 1,
+        "class": "links"
+    };
+    let selection = svg.selectAll(".links");
+    selection = selection.data(graph.links)
+        .enter()
+        .append("path")
+        .merge(selection)
+        .attrs(linkAttr);
 });
 
 // read in xml string and return location tree and session table

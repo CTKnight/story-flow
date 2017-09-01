@@ -110,7 +110,7 @@ export default function () {
         y0 = 0,
         x1 = 1,
         y1 = 1,
-        lineWidth = 3;
+        lineWidth = 1;
     // data: locationTree: TreeNode
     // sessionTable: Map<Int, EntityInfo[]>
     // entities: [string];
@@ -148,7 +148,8 @@ export default function () {
         }
         sortRelationTreeSequence(sequence);
         let alignedSessions = alignSequence(sequence);
-        compactLayout(sequence, alignedSessions);
+        let indexTable = compactLayout(sequence, alignedSessions);
+        generateGraph(indexTable);
     }
 
     function preprocessData(data) {
@@ -331,6 +332,9 @@ export default function () {
                 targetTree.sessions
                     .map((session) => {
                         let infoList = data.sessionTable.get(session);
+                        if (!infoList) {
+                            return {key: session, value: []};
+                        }
                         // [start, end) except for maxTimeframe
                         // because the data is  like {start: 0, end: 7}, {start: 7, end: 21}
                         // second condition is for the last session in this entity
@@ -818,6 +822,15 @@ export default function () {
 
         console.log(solution);
 
+        for (let [entity, indexMap] of indexTable) {
+            for (let [timeframe, index] of indexMap) {
+                indexMap.set(timeframe, solutionSet[index]);
+            }
+        }
+
+        console.log(indexTable);
+        return indexTable;
+
         function secondTerm(sessionOrder, timeframe, timeGap) {
             sessionOrder = sessionOrder.filter(v => v);
             for (let [sessionId, entityInfoArray] of sessionOrder) {
@@ -833,6 +846,27 @@ export default function () {
                 Amat[i][column] = 0;
             }
         }
+    }
+
+    function generateGraph(indexTable) {
+        let xPerTime = (x1 - x0) / data.keyTimeframe[data.keyTimeframe.length - 1];
+        graph = {links: []};
+        for (let [entity, indexMap] of indexTable) {
+            let timeframeYArray = [...indexMap];
+            if (timeframeYArray.length <= 1) {
+                continue;
+            }
+            let link = {};
+            link.source = {x: timeframeYArray[0][0] * xPerTime, y: timeframeYArray[0][1]};
+            for (let i = 1; i < timeframeYArray.length; i++) {
+                let target = {x: timeframeYArray[i][0] * xPerTime, y: timeframeYArray[i][1]};
+                link.target = target;
+                graph.links.push(link);
+                link = {};
+                link.source = target;
+            }
+        }
+        console.log(graph);
     }
 
     return storyFlow;
