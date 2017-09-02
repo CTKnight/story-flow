@@ -78,9 +78,9 @@ function longestCommonSubstring(sessionA, sessionB) {
                 table[i][j] = table[i - 1][j - 1] + 1;
                 if (table[i][j] > z) {
                     z = table[i][j];
-                    result = reference.slice(i - z + 1, i);
+                    result = reference.slice(i - z + 1, i + 1).map(v => v.entity);
                 } else if (table[i][j] === z) {
-                    result.concat(reference.slice(i - z + 1, i));
+                    result.concat(reference.slice(i - z + 1, i + 1).map(v => v.entity));
                 }
             } else {
                 table[i][j] = 0;
@@ -761,8 +761,11 @@ export default function () {
                     }
 
                     let firstCommonEntity = lcsubstring[0];
-                    let firstIndex = currentRTree.sessionOrder[newSession][1].indexOf(firstCommonEntity);
-                    for (let j = 0; j < length; j++, firstIndex++) {
+                    let firstIndex = currentRTree.sessionOrder[newSession][1].map(v => v.entity).indexOf(firstCommonEntity);
+                    if (firstIndex === -1) {
+                        throw "alignment failed unexpectedly: common entity not found!";
+                    }
+                    for (let j = 0; j < lcsubstring.length; j++, firstIndex++) {
                         buildEqualityAlignmentConstraint(currentRTree.sessionOrder[newSession][1][firstIndex]);
                     }
                 }
@@ -816,11 +819,11 @@ export default function () {
         console.log(bvec);
         console.log(meq);
         console.log(index);
-
         let solution = solveQP(Dmat, dvec, Amat, bvec, meq);
         let solutionSet = solution.solution.map(Math.round);
 
         console.log(solution);
+
 
         for (let [entity, indexMap] of indexTable) {
             for (let [timeframe, index] of indexMap) {
