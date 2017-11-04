@@ -95,8 +95,10 @@ export default function () {
     // for some special cases like dummy head
     const MAX_SORT_LOOP = 20;
     const RELATIVE_FACTOR_ALPHA = 0.1;
+    const RELATIVE_FACTOR_BETA = 1;
     const SAME_SESSION_FACTOR = 3;
     const DIFFERENT_SESSION_FACTOR = 9;
+    const EPSILON = 0.01;
     // record the best path direction
     const LEFT = "LEFT",
         LEFT_UP = "LEFT_UP",
@@ -687,11 +689,11 @@ export default function () {
         // index base 1
         // at here index is the total count of vars
         let Amat = create2DArray(index + 1, 0);
+        Amat[0] = undefined;
 
         let Dmat = create2DArray(index + 1, index + 1, 0);
         for (let i = 0; i + 1 < sequence.length; i++) {
-            let timeGap = sequence[i + 1][0] - sequence[i][0];
-            secondTerm(sequence[i][1].sessionOrder, sequence[i][0], timeGap);
+            secondTerm(sequence[i][1].sessionOrder, sequence[i][0]);
         }
 
         let bvec = [];
@@ -720,7 +722,60 @@ export default function () {
         // construct equality contraints first
         let constraintCount = 0;
         // construct constraints matrix according to extent, alignments and fomulas
-        // eq constraint 1: entities under same sessions
+        
+        function buildNumericEqualityConstraints() {
+
+        }
+
+        // eq constraint 1: aligned entities
+        for (let i = 1; i < sequence.length; i++) {
+            let [timeframe, currentRTree] = sequence[i];
+            let [previousTimeframe, previousRTree] = sequence[i - 1];
+            let alignedPair = alignedSessions[i][1];
+            if (alignedPair === undefined) {
+                // entities are all the same, aligned them all
+                for (let [sessionId, entityInfoArray] of currentRTree.sessionOrder.filter(v => v)) {
+                    for (let entityInfo of entityInfoArray) {
+                        buildEqualityAlignmentConstraint(entityInfo);
+                    }
+                }
+            } else {
+                for (let [newSession, oldSession] of [...alignedPair].sort((a, b) => a[0] - b[0])) {
+                    // re-evaluate the longest common substring to aligned pairs
+                    let lcsubstring = longestCommonSubstring(currentRTree.sessionOrder[newSession], previousRTree.sessionOrder[oldSession]);
+                    if (lcsubstring.length === 0) {
+                        continue;
+                    }
+
+                    let firstCommonEntity = lcsubstring[0];
+                    let firstIndex = currentRTree.sessionOrder[newSession][1].map(v => v.entity).indexOf(firstCommonEntity);
+                    if (firstIndex === -1) {
+                        throw "alignment failed unexpectedly: common entity not found!";
+                    }
+                    for (let j = 0; j < lcsubstring.length; j++) {
+                        buildEqualityAlignmentConstraint(currentRTree.sessionOrder[newSession][1][firstIndex + j]);
+                    }
+                }
+            }
+
+            function buildEqualityAlignmentConstraint(entityInfo) {
+                let currentIndex = indexTable.get(entityInfo.entity).get(timeframe);
+                let previousIndex = indexTable.get(entityInfo.entity).get(previousTimeframe);
+                constraintCount++;
+                initializeColumn(Amat, constraintCount);
+                Amat[currentIndex][constraintCount] = 1;
+                Amat[previousIndex][constraintCount] = -1;
+                bvec[constraintCount] = -EPSILON;
+
+                constraintCount++;
+                initializeColumn(Amat, constraintCount);
+                Amat[currentIndex][constraintCount] = -1;
+                Amat[previousIndex][constraintCount] = 1;
+                bvec[constraintCount] = -EPSILON;
+            }
+        }
+
+        // eq constraint 2: entities under same sessions
         for (let [timeframe, rtree] of sequence) {
             let sessionOrder = rtree.sessionOrder.filter(v => v);
             for (let [sessionId, entityInfoArray] of sessionOrder) {
@@ -735,58 +790,21 @@ export default function () {
                         initializeColumn(Amat, constraintCount);
                         Amat[previousEntityIndex][constraintCount] = -1;
                         Amat[currentEntityIndex][constraintCount] = 1;
-                        bvec[constraintCount] = sameSessionGap;
+                        bvec[constraintCount] = sameSessionGap - EPSILON;
+
+                        constraintCount++;
+                        initializeColumn(Amat, constraintCount);
+                        Amat[previousEntityIndex][constraintCount] = 1;
+                        Amat[currentEntityIndex][constraintCount] = -1;
+                        bvec[constraintCount] = -sameSessionGap - EPSILON;
+
                         previousEntityIndex = currentEntityIndex;
                     }
                 }
             }
         }
-        // eq constraint 2: aligned entities
-        for (let i = 1; i < sequence.length; i++) {
-            let [timeframe, currentRTree] = sequence[i];
-            let [previousTimeframe, previousRTree] = sequence[i - 1];
-            let alignedPair = alignedSessions[i][1];
-            if (alignedPair === undefined) {
-                // entities are all the same, aligned them all
-                for (let [sessionId, entityInfoArray] of currentRTree.sessionOrder.filter(v => v)) {
-                    for (let entityInfo of entityInfoArray) {
-                        buildEqualityAlignmentConstraint(entityInfo);
-                    }
-                }
-            } else {
-                for (let [newSession, oldSession] of [...alignedPair].sort((a, b) => a[0] - b[0])) {
-                    let lcsubstring = longestCommonSubstring(currentRTree.sessionOrder[newSession], previousRTree.sessionOrder[oldSession]);
-                    if (lcsubstring.length === 0) {
-                        continue;
-                    }
 
-                    let firstCommonEntity = lcsubstring[0];
-                    let firstIndex = currentRTree.sessionOrder[newSession][1].map(v => v.entity).indexOf(firstCommonEntity);
-                    if (firstIndex === -1) {
-                        throw "alignment failed unexpectedly: common entity not found!";
-                    }
-                    for (let j = 0; j < lcsubstring.length; j++, firstIndex++) {
-                        buildEqualityAlignmentConstraint(currentRTree.sessionOrder[newSession][1][firstIndex]);
-                    }
-                }
-            }
-
-            function buildEqualityAlignmentConstraint(entityInfo) {
-                let currentIndex = indexTable.get(entityInfo.entity).get(timeframe);
-                let previousIndex = indexTable.get(entityInfo.entity).get(previousTimeframe);
-                constraintCount++;
-                initializeColumn(Amat, constraintCount);
-                Amat[currentIndex][constraintCount] = 1;
-                Amat[previousIndex][constraintCount] = -1;
-                bvec[constraintCount] = 0;
-            }
-
-
-        }
-
-        let meq = constraintCount;
         // ineq constraint 3: different session entities gap
-
         for (let [timeframe, rtree] of sequence) {
             let sessionOrder = rtree.sessionOrder.filter(v => v);
             if (sessionOrder.length <= 1) {
@@ -805,21 +823,34 @@ export default function () {
         }
 
 
-        // ineq range 0 <= y <= y_max
+        // ineq range 0 <= y
         for (let i = 1; i <= index; i++) {
             // >= 0
             constraintCount++;
             initializeColumn(Amat, constraintCount);
             Amat[i][constraintCount] = 1;
-            bvec[constraintCount] = 0;
+            bvec[constraintCount] = -EPSILON;
         }
 
+        Dmat.forEach(
+            function(row) {
+                if (row) {
+                    row.forEach(
+                        function(v,i,a) {
+                            if (a[i]) {
+                                a[i] *= 2;
+                            }
+                        }                        
+                    );
+                }
+            }
+        );
+
+        console.log(Dmat);        
         console.log(Amat);
-        console.log(Dmat);
         console.log(bvec);
-        console.log(meq);
-        console.log(index);
-        let solution = solveQP(Dmat, dvec, Amat, bvec, meq);
+        
+        let solution = solveQP(Dmat, dvec, Amat, bvec,  0);
         let solutionSet = solution.solution.map(Math.round);
 
         console.log(solution);
@@ -831,21 +862,21 @@ export default function () {
             }
         }
 
-        console.log(indexTable);
+        // console.log(indexTable);
         return indexTable;
 
-        function secondTerm(sessionOrder, timeframe, timeGap) {
+        function secondTerm(sessionOrder, timeframe) {
             sessionOrder = sessionOrder.filter(v => v);
             for (let [sessionId, entityInfoArray] of sessionOrder) {
                 for (let entityInfo of entityInfoArray) {
                     let sij = indexTable.get(entityInfo.entity).get(timeframe);
-                    Dmat[sij][sij] += timeGap;
+                    Dmat[sij][sij] += RELATIVE_FACTOR_BETA;
                 }
             }
         }
 
         function initializeColumn(Amat, column) {
-            for (let i = 0; i < Amat.length; i++) {
+            for (let i = 1; i < Amat.length; i++) {
                 Amat[i][column] = 0;
             }
         }

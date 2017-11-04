@@ -1,9 +1,26 @@
 import storyflow from "../../src/js/story-flow";
 import * as d3 from "d3";
 import "d3-selection-multi";
+import {
+    solveQP
+} from "quadprog";
+
 
 import storyflowlinkHorizontal from "../../src/js/linkHorizontal";
-d3.xml("../test/Data/redhat.xml", (error, data) => {
+
+function initializeColumn(Amat, column) {
+    for (let i = 1; i < Amat.length; i++) {
+        Amat[i][column] = 0;
+    }
+}
+
+function create2DArray(row, column, defaultValue) {
+    return defaultValue === undefined ? [...Array(row).keys()].map(() => Array(column)) : [...Array(row).keys()].map(() => Array(column).fill(defaultValue));
+}
+
+
+d3.xml("../test/Data/matrix.xml", (error, data) => {
+    
     if (error) {
         throw error;
     }
