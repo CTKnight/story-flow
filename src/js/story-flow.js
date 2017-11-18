@@ -722,10 +722,6 @@ export default function () {
         // construct equality contraints first
         let constraintCount = 0;
         // construct constraints matrix according to extent, alignments and fomulas
-        
-        function buildNumericEqualityConstraints() {
-
-        }
 
         // eq constraint 1: aligned entities
         for (let i = 1; i < sequence.length; i++) {
@@ -849,8 +845,10 @@ export default function () {
         console.log(Dmat);        
         console.log(Amat);
         console.log(bvec);
-        
+
+        console.time("QP");
         let solution = solveQP(Dmat, dvec, Amat, bvec,  0);
+        console.timeEnd("QP");
         let solutionSet = solution.solution.map(Math.round);
 
         console.log(solution);
