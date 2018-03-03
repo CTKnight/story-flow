@@ -19,7 +19,7 @@ function create2DArray(row, column, defaultValue) {
 }
 
 
-d3.xml("../test/Data/matrix.xml", (error, data) => {
+d3.xml("../test/Data/inception.xml", (error, data) => {
     
     if (error) {
         throw error;

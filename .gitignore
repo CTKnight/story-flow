@@ -2,3 +2,7 @@ node_modules/
 build/
 package-lock.json
 test/Data
+!test/Data/inceptionTune.xml
+!test/Data/LetBulletFly_tune.xml
+!test/Data/matrix_tune.xml
+!test/Data/starwar_tune.xml
