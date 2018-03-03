@@ -5,19 +5,13 @@ WIP
 
 ## Example
 
-![Inception](doc\Inception.png)
+![Inception](doc/Inception.png)
 
+![LetBulletFly](doc/LetBulletFly.png)
 
+![Matrix](doc/Matrix.png)
 
-![LetBulletFly](doc\LetBulletFly.png)
-
-
-
-![Matrix](doc\Matrix.png)
-
-
-
-![StarWars](doc\StarWars.png)
+![StarWars](doc/StarWars.png)
 
 License
 ---------
