@@ -882,21 +882,25 @@ export default function () {
 
     function generateGraph(indexTable) {
         let xPerTime = (x1 - x0) / data.keyTimeframe[data.keyTimeframe.length - 1];
-        graph = {links: []};
+        graph = {links: [], nodes: []};
         for (let [entity, indexMap] of indexTable) {
             let timeframeYArray = [...indexMap];
             if (timeframeYArray.length <= 1) {
                 continue;
             }
             let link = {};
+            let nodes = [];
             link.source = {x: timeframeYArray[0][0] * xPerTime, y: timeframeYArray[0][1]};
+            nodes.push([link.source.x, link.source.y]);
             for (let i = 1; i < timeframeYArray.length; i++) {
                 let target = {x: timeframeYArray[i][0] * xPerTime, y: timeframeYArray[i][1]};
                 link.target = target;
                 graph.links.push(link);
+                nodes.push([link.source.x, link.source.y]);
                 link = {};
                 link.source = target;
             }
+            graph.nodes.push(nodes);
         }
         console.log(graph);
     }
